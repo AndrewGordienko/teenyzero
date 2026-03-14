@@ -4,7 +4,7 @@
   <img alt="teenyzero logo" src="/docs/logo.png" width="40%" height="40%">
 </picture>
 
-### teenyzero: Modeling attack geometry for abductive search.
+### teenyzero: Modeling Geometry for Abductive Search.
 *Preparing for a Summer 2026 Research Internship*
 </div>
 
