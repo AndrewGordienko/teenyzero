@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>teenyzero | factory monitor</title>
+    <style>
+        body { background: #fdfdfd; font-family: monospace; padding: 40px; color: #333; }
+        .worker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+        .card { border: 1px solid #eee; padding: 20px; border-radius: 8px; background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .worker-id { font-weight: bold; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 10px; }
+        .stat-row { display: flex; justify-content: space-between; margin: 5px 0; font-size: 12px; }
+        .fen { font-size: 10px; color: #999; word-break: break-all; margin-top: 10px; padding: 5px; background: #f9f9f9; }
+        .pulse { height: 10px; width: 10px; background: #4caf50; border-radius: 50%; display: inline-block; }
+    </style>
+</head>
+<body>
+    <h2><span class="pulse"></span> TEENYZERO_CLUSTER_MONITOR</h2>
+    <div id="grid" class="worker-grid"></div>
+
+    <script>
+        function update() {
+            fetch('/api/stats').then(r => r.json()).then(data => {
+                const grid = document.getElementById('grid');
+                grid.innerHTML = '';
+                Object.entries(data).forEach(([id, stats]) => {
+                    grid.innerHTML += `
+                        <div class="card">
+                            <div class="worker-id">WORKER_${id}</div>
+                            <div class="stat-row"><span>Moves</span> <span>${stats.move_count}</span></div>
+                            <div class="stat-row"><span>Total Games</span> <span>${stats.total_games}</span></div>
+                            <div class="stat-row"><span>Turn</span> <span>${stats.turn}</span></div>
+                            <div class="fen">${stats.fen}</div>
+                        </div>
+                    `;
+                });
+            });
+        }
+        setInterval(update, 1000);
+    </script>
+</body>
+</html>

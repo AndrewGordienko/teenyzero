@@ -1,8 +1,5 @@
-# teenyzero tasks
-
-## Search Engine
-- [ ] Implement MCTS core
-- [ ] Make the network playable in chess
-
-## Playable Interface
-- [ ] Write the visual dashboard to play it (simple)
+clean the visualizer folder up - put the chess playing away
+make the self play data fast again for mcts
+dashboard for training
+    maybe connect the three into one website because theyre probably running at once
+    the sample creation, network training, and playing
