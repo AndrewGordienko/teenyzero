@@ -1,7 +1,0 @@
-Metadata-Version: 2.1
-Name: teenyzero
-Version: 0.1.0
-Requires-Dist: chess
-Requires-Dist: torch
-Requires-Dist: numpy
-Requires-Dist: flask
