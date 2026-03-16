@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TeenyZero Visualizers</title>
+    <style>
+        :root {
+            --bg: #ffffff;
+            --text: #12171d;
+            --muted: #697683;
+            --line: #e3e8ed;
+            --accent: #1f56d8;
+            --accent-soft: #eff4ff;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: "Avenir Next", "Segoe UI", sans-serif;
+        }
+        .shell {
+            max-width: 1240px;
+            margin: 0 auto;
+            padding: 32px 24px 56px;
+        }
+        .hero {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr);
+            gap: 18px;
+            padding-bottom: 26px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid var(--line);
+        }
+        .eyebrow {
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 0.16em;
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+        h1 {
+            margin: 0 0 10px;
+            font-size: 38px;
+            letter-spacing: -0.05em;
+        }
+        .hero p {
+            margin: 0;
+            max-width: 760px;
+            color: var(--muted);
+            line-height: 1.6;
+            font-size: 15px;
+        }
+        .strip {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 0;
+            border-top: 1px solid var(--line);
+            border-bottom: 1px solid var(--line);
+            margin-bottom: 12px;
+        }
+        .strip-item {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 16px;
+            align-items: center;
+            padding: 18px 16px;
+            border-bottom: 1px solid var(--line);
+        }
+        .strip-item:last-child {
+            border-bottom: none;
+        }
+        .label {
+            display: block;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            font-size: 11px;
+            margin-bottom: 8px;
+        }
+        .value {
+            font-size: 28px;
+            letter-spacing: -0.04em;
+            line-height: 1;
+            margin-bottom: 8px;
+        }
+        .note {
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 152px;
+            padding: 11px 14px;
+            border-radius: 999px;
+            border: 1px solid #111111;
+            color: #ffffff;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 600;
+            background: #111111;
+        }
+        .button:hover {
+            background: #000000;
+            border-color: #000000;
+        }
+        @media (max-width: 860px) {
+            .strip-item {
+                grid-template-columns: 1fr;
+                align-items: start;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main class="shell">
+        <section class="hero">
+            <div>
+                <div class="eyebrow">TeenyZero</div>
+                <h1>Visualizer Hub</h1>
+                <p>Open the current network for play or inspect the live self-play cluster monitor.</p>
+            </div>
+        </section>
+
+        <section class="strip">
+            <div class="strip-item">
+                <div>
+                    <span class="label">Play</span>
+                    <div class="value">Engine Board</div>
+                    <div class="note">Interactive chess interface against the current network.</div>
+                </div>
+                <a class="button" href="/play">Open</a>
+            </div>
+            <div class="strip-item">
+                <div>
+                    <span class="label">Monitor</span>
+                    <div class="value">Cluster Monitor</div>
+                    <div class="note">Worker boards, outcomes, and MCTS timing telemetry.</div>
+                </div>
+                <a class="button" href="/monitor">Open</a>
+            </div>
+            <div class="strip-item">
+                <div>
+                    <span class="label">Train</span>
+                    <div class="value">Training Status</div>
+                    <div class="note">Replay buffer progress, latest losses, and continuous trainer state.</div>
+                </div>
+                <a class="button" href="/training">Open</a>
+            </div>
+        </section>
+    </main>
+</body>
+</html>

@@ -1,22 +1,16 @@
-import numpy as np
-
 class MCTSNode:
+    __slots__ = ("children", "P", "N", "W")
+
     def __init__(self, priors: dict):
-        """
-        priors: dict of {action: probability}
-        """
-        self.children = {} # action -> MCTSNode
-        
-        # We use numpy arrays for these to make bulk math faster later
-        self.actions = list(priors.keys())
-        self.P = np.array([priors[a] for a in self.actions])
-        self.N = np.zeros(len(self.actions))
-        self.W = np.zeros(len(self.actions))
-        self.Q = np.zeros(len(self.actions))
+        self.children = {}
+        self.P = {move: float(prob) for move, prob in priors.items()}
+        self.N = {move: 0 for move in priors}
+        self.W = {move: 0.0 for move in priors}
 
-    def get_child(self, action):
-        return self.children.get(action)
+    def get_child(self, move):
+        return self.children.get(move)
 
-    def add_child(self, action, priors):
-        self.children[action] = MCTSNode(priors)
-        return self.children[action]
+    def add_child(self, move, priors):
+        child = MCTSNode(priors)
+        self.children[move] = child
+        return child

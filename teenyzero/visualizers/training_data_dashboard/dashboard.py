@@ -1,7 +1,6 @@
 from flask import Flask, render_template, jsonify
-import time
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="static", template_folder="templates")
 shared_stats = {} # Injected by run_actors.py
 
 @app.route("/")
@@ -10,8 +9,12 @@ def index():
 
 @app.route("/api/stats")
 def get_stats():
-    # Convert shared_stats to a regular dict for JSON serialization
-    return jsonify(dict(shared_stats))
+    # Manager dict keys are mixed ints/strings, which breaks Flask JSON sorting.
+    normalized = {
+        str(key): value
+        for key, value in dict(shared_stats).items()
+    }
+    return jsonify(normalized)
 
 def run_dashboard(stats_ref):
     global shared_stats

@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TeenyZero | Training</title>
+    <style>
+        :root {
+            --bg: #ffffff;
+            --text: #12171d;
+            --muted: #697683;
+            --line: #e3e8ed;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: "Avenir Next", "Segoe UI", sans-serif;
+        }
+        .shell {
+            max-width: 1240px;
+            margin: 0 auto;
+            padding: 28px 24px 48px;
+        }
+        .hero {
+            display: flex;
+            justify-content: space-between;
+            align-items: end;
+            gap: 20px;
+            padding-bottom: 24px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid var(--line);
+        }
+        .eyebrow {
+            margin-bottom: 8px;
+            font-size: 12px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: #1f56d8;
+        }
+        h1 {
+            margin: 0 0 8px;
+            font-size: 34px;
+            letter-spacing: -0.04em;
+        }
+        .subtitle {
+            margin: 0;
+            color: var(--muted);
+            font-size: 14px;
+        }
+        .home-link {
+            color: var(--text);
+            text-decoration: none;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            padding: 10px 14px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            gap: 0;
+            border-top: 1px solid var(--line);
+            border-bottom: 1px solid var(--line);
+            margin-bottom: 24px;
+            overflow-x: auto;
+        }
+        .item {
+            padding: 18px 16px;
+            border-right: 1px solid var(--line);
+            min-width: 180px;
+        }
+        .item:last-child { border-right: none; }
+        .label {
+            display: block;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            font-size: 11px;
+            margin-bottom: 8px;
+        }
+        .value {
+            font-size: 26px;
+            line-height: 1;
+            letter-spacing: -0.04em;
+            margin-bottom: 8px;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+        .value.compact {
+            font-size: 18px;
+            line-height: 1.15;
+            letter-spacing: -0.02em;
+        }
+        .note {
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.45;
+        }
+        .progress-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 18px;
+            margin-bottom: 24px;
+        }
+        .progress-card {
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            padding: 18px;
+        }
+        .progress-title {
+            margin: 0 0 10px;
+            font-size: 15px;
+            letter-spacing: -0.02em;
+        }
+        .progress-meta {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 10px;
+            font-size: 13px;
+            color: var(--muted);
+        }
+        .progress-value {
+            font-size: 22px;
+            letter-spacing: -0.03em;
+            margin-bottom: 10px;
+        }
+        .progress-bar {
+            height: 8px;
+            background: #f3f5f7;
+            border-radius: 999px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: #111111;
+            border-radius: 999px;
+            width: 0%;
+            transition: width 180ms ease;
+        }
+        .card {
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            padding: 18px;
+        }
+        .card h2 {
+            margin: 0 0 14px;
+            font-size: 18px;
+            letter-spacing: -0.03em;
+        }
+        .chart-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 18px;
+            margin-bottom: 24px;
+        }
+        .chart-card {
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            padding: 18px;
+        }
+        .chart-card h2 {
+            margin: 0 0 14px;
+            font-size: 18px;
+            letter-spacing: -0.03em;
+        }
+        .chart {
+            width: 100%;
+            height: 180px;
+            display: block;
+            background: #fbfcfd;
+            border-radius: 12px;
+            border: 1px solid var(--line);
+        }
+        .rows {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px 18px;
+        }
+        .row {
+            border-top: 1px solid var(--line);
+            padding-top: 10px;
+        }
+        .row-key {
+            color: var(--muted);
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+        .row-value {
+            font-size: 15px;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+        @media (max-width: 840px) {
+            .hero { flex-direction: column; align-items: start; }
+            .progress-grid { grid-template-columns: 1fr; }
+            .chart-grid { grid-template-columns: 1fr; }
+            .rows { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <main class="shell">
+        <header class="hero">
+            <div>
+                <div class="eyebrow">TeenyZero</div>
+                <h1>Training Status</h1>
+                <p class="subtitle">Continuous trainer state, replay buffer progress, and latest loss metrics.</p>
+            </div>
+            <a class="home-link" href="/">Back to Hub</a>
+        </header>
+
+        <section id="summary" class="grid"></section>
+
+        <section id="progress" class="progress-grid"></section>
+
+        <section class="chart-grid">
+            <section class="chart-card">
+                <h2>Loss History</h2>
+                <svg id="loss-chart" class="chart" viewBox="0 0 520 180" preserveAspectRatio="none"></svg>
+            </section>
+            <section class="chart-card">
+                <h2>Train Duration</h2>
+                <svg id="duration-chart" class="chart" viewBox="0 0 520 180" preserveAspectRatio="none"></svg>
+            </section>
+        </section>
+
+        <section class="card">
+            <h2>Trainer Details</h2>
+            <div id="details" class="rows"></div>
+        </section>
+    </main>
+
+    <script>
+        function prettyStatus(value) {
+            return String(value || "idle")
+                .split("_")
+                .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+                .join(" ");
+        }
+
+        function fmtNumber(value, digits = 1) {
+            const num = Number(value || 0);
+            return Number.isFinite(num) ? num.toFixed(digits) : "0.0";
+        }
+
+        function fmtLoss(value) {
+            const num = Number(value || 0);
+            if (!Number.isFinite(num)) return "0.0000";
+            if (num === 0) return "0.0000";
+            if (Math.abs(num) < 0.001) return num.toExponential(2);
+            return num.toFixed(4);
+        }
+
+        function fmtInt(value) {
+            const num = Number(value || 0);
+            return Number.isFinite(num) ? Math.round(num).toLocaleString() : "0";
+        }
+
+        function fmtDate(ts) {
+            if (!ts) return "n/a";
+            return new Date(ts * 1000).toLocaleString();
+        }
+
+        function render(state) {
+            const summary = document.getElementById("summary");
+            const progress = document.getElementById("progress");
+            const details = document.getElementById("details");
+
+            const nextTrainTarget = Number(state.train_increment || 0);
+            const newSamples = Number(state.new_samples_since_last_train || 0);
+            const bufferSamples = Number(state.buffer_sample_count || 0);
+            const minReady = Number(state.min_samples_ready || 0);
+            const batchesDone = Number(state.completed_batches || 0);
+            const batchesTotal = Number(state.total_batches || 0);
+            const filesDone = Number(state.loaded_files || 0);
+            const filesTotal = Number(state.total_window_files || 0);
+
+            const cards = [
+                ["Status", prettyStatus(state.status), "trainer loop state"],
+                ["Heartbeat", fmtDate(state.heartbeat_at), "latest trainer state update"],
+                ["Buffer Samples", fmtInt(state.buffer_sample_count), "all replay samples currently available"],
+                ["New Samples", fmtInt(state.new_samples_since_last_train), "new samples since last train cycle"],
+                ["Train Cycles", fmtInt(state.training_cycles), "completed training updates"],
+                ["Loss", fmtLoss(state.running_loss || state.last_loss), "latest or in-progress total loss"],
+            ];
+
+            summary.innerHTML = cards.map(([label, value, note]) => `
+                <div class="item">
+                    <span class="label">${label}</span>
+                    <div class="value ${String(value).length > 18 ? "compact" : ""}">${value}</div>
+                    <div class="note">${note}</div>
+                </div>
+            `).join("");
+
+            const progressCards = [
+                [
+                    "Next Train Trigger",
+                    `${fmtInt(newSamples)} / ${fmtInt(nextTrainTarget)}`,
+                    Math.max(0, Math.min(100, nextTrainTarget ? (newSamples / nextTrainTarget) * 100 : 0)),
+                    `${fmtInt(Math.max(0, nextTrainTarget - newSamples))} samples remaining`
+                ],
+                [
+                    "Buffer Readiness",
+                    `${fmtInt(bufferSamples)} / ${fmtInt(minReady)}`,
+                    Math.max(0, Math.min(100, minReady ? (bufferSamples / minReady) * 100 : 0)),
+                    "minimum replay size before training starts"
+                ],
+                [
+                    "Current Cycle Progress",
+                    batchesTotal > 0 ? `${fmtInt(batchesDone)} / ${fmtInt(batchesTotal)}` : `${fmtInt(filesDone)} / ${fmtInt(filesTotal)}`,
+                    Math.max(
+                        0,
+                        Math.min(
+                            100,
+                            batchesTotal > 0
+                                ? (batchesDone / Math.max(1, batchesTotal)) * 100
+                                : (filesDone / Math.max(1, filesTotal || 1)) * 100
+                        )
+                    ),
+                    batchesTotal > 0 ? "training batches completed" : "replay files loaded into the active window"
+                ]
+            ];
+
+            progress.innerHTML = progressCards.map(([title, value, pct, note]) => `
+                <div class="progress-card">
+                    <h2 class="progress-title">${title}</h2>
+                    <div class="progress-value">${value}</div>
+                    <div class="progress-bar"><div class="progress-fill" style="width:${pct.toFixed(1)}%"></div></div>
+                    <div class="progress-meta">
+                        <span>${note}</span>
+                        <span>${pct.toFixed(0)}%</span>
+                    </div>
+                </div>
+            `).join("");
+
+            const rows = [
+                ["Policy Loss", fmtLoss(state.last_policy_loss)],
+                ["Value Loss", fmtLoss(state.last_value_loss)],
+                ["Train Increment", fmtInt(state.train_increment)],
+                ["Min Samples Ready", fmtInt(state.min_samples_ready)],
+                ["Replay Window", fmtInt(state.replay_window_samples)],
+                ["Active Window", fmtInt(state.active_window_samples || state.replay_window_samples)],
+                ["Bootstrap Window", fmtInt(state.bootstrap_window_samples)],
+                ["Last Cycle Samples", fmtInt(state.last_cycle_samples)],
+                ["Buffer Files", fmtInt(state.buffer_file_count)],
+                ["Last Train Start", fmtDate(state.last_train_started_at)],
+                ["Last Train End", fmtDate(state.last_train_finished_at)],
+                ["Last Train Duration", `${fmtNumber(state.last_train_duration_s, 2)} s`],
+                ["Loaded Window Files", `${fmtInt(state.loaded_files)} / ${fmtInt(state.total_window_files)}`],
+                ["Loaded Window Samples", fmtInt(state.loaded_window_samples)],
+                ["Batches Progress", `${fmtInt(state.completed_batches)} / ${fmtInt(state.total_batches)}`],
+                ["Running Policy Loss", fmtLoss(state.running_policy_loss)],
+                ["Running Value Loss", fmtLoss(state.running_value_loss)],
+                ["Pruned Files Last Cycle", fmtInt(state.last_pruned_files)],
+                ["Latest Model", state.latest_model_path || "n/a"],
+                ["Device", state.device || "n/a"],
+            ];
+
+            details.innerHTML = rows.map(([key, value]) => `
+                <div class="row">
+                    <div class="row-key">${key}</div>
+                    <div class="row-value">${value}</div>
+                </div>
+            `).join("");
+        }
+
+        function renderLineChart(svgId, values, color) {
+            const svg = document.getElementById(svgId);
+            const width = 520;
+            const height = 180;
+            const padding = 16;
+            svg.innerHTML = "";
+
+            if (!values.length) {
+                return;
+            }
+
+            const minValue = Math.min(...values);
+            const maxValue = Math.max(...values);
+            const valueSpan = Math.max(1e-6, maxValue - minValue);
+
+            const points = values.map((value, index) => {
+                const x = padding + (index * (width - padding * 2)) / Math.max(1, values.length - 1);
+                const y = height - padding - ((value - minValue) / valueSpan) * (height - padding * 2);
+                return `${x},${y}`;
+            }).join(" ");
+
+            svg.innerHTML = `
+                <polyline fill="none" stroke="${color}" stroke-width="3" points="${points}" />
+            `;
+        }
+
+        function renderHistory(history) {
+            renderLineChart("loss-chart", history.map(item => Number(item.loss || 0)), "#1f56d8");
+            renderLineChart("duration-chart", history.map(item => Number(item.duration_s || 0)), "#111111");
+        }
+
+        async function update() {
+            const [stateResponse, historyResponse] = await Promise.all([
+                fetch("/api/training_status"),
+                fetch("/api/training_history")
+            ]);
+            const state = await stateResponse.json();
+            const history = await historyResponse.json();
+            const liveHistory = history.slice();
+            if (state.running_loss || state.running_policy_loss || state.running_value_loss || state.status !== "waiting") {
+                liveHistory.push({
+                    loss: Number(state.running_loss || state.last_loss || 0),
+                    duration_s: Number(state.last_train_duration_s || 0),
+                });
+            }
+            render(state);
+            renderHistory(liveHistory);
+        }
+
+        update();
+        setInterval(update, 5000);
+    </script>
+</body>
+</html>
