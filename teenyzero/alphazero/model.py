@@ -63,11 +63,11 @@ class AlphaNet(nn.Module):
             x = block(x)
 
         p = F.relu(self.pol_bn(self.pol_conv(x)))
-        p = p.view(p.size(0), -1)
+        p = p.reshape(p.size(0), -1)
         p = self.pol_fc(p)
 
         v = F.relu(self.val_bn(self.val_conv(x)))
-        v = v.view(v.size(0), -1)
+        v = v.reshape(v.size(0), -1)
         v = F.relu(self.val_fc1(v))
         v = torch.tanh(self.val_fc2(v))
 
