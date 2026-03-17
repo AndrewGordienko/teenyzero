@@ -30,4 +30,4 @@ def get_stats():
 def run_dashboard(stats_ref):
     global shared_stats
     shared_stats = stats_ref
-    app.run(host="0.0.0.0", port=5002, debug=False)
+    app.run(host="0.0.0.0", port=5002, debug=False, threaded=False, use_reloader=False)

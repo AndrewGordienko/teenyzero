@@ -16,6 +16,21 @@ from teenyzero.visualizers.dashboards.cluster_monitor.dashboard import run_dashb
 PROFILE = get_runtime_profile()
 
 
+def _available_cpu_count():
+    count_fn = getattr(os, "process_cpu_count", os.cpu_count)
+    count = count_fn()
+    return int(count or 1)
+
+
+def _default_worker_count(device: str) -> int:
+    if device not in {"cuda", "mps"}:
+        return 4
+    cpu_budget = max(2, _available_cpu_count())
+    reserved = 4 if device == "cuda" else 2
+    usable = max(2, cpu_budget - reserved)
+    return max(2, min(PROFILE.selfplay_workers, usable // 2 or 1))
+
+
 def bootstrap_model(path):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     model = build_model()
@@ -85,7 +100,7 @@ if __name__ == "__main__":
         help="Number of self-play processes (defaults come from the active runtime profile)",
     )
     args = parser.parse_args()
-    default_workers = PROFILE.selfplay_workers if DEVICE in {"cuda", "mps"} else 4
+    default_workers = _default_worker_count(DEVICE)
     leaf_batch_size = PROFILE.selfplay_leaf_batch_size if DEVICE in {"cuda", "mps"} else 8
     worker_count = args.workers if args.workers is not None else default_workers
 
@@ -97,6 +112,8 @@ if __name__ == "__main__":
             "config": {
                 "device": DEVICE,
                 "profile": PROFILE.name,
+                "available_cpus": _available_cpu_count(),
+                "profile_worker_budget": PROFILE.selfplay_workers,
                 "workers": worker_count,
                 "model_path": MODEL_PATH,
                 "simulations": PROFILE.selfplay_simulations,
@@ -141,6 +158,8 @@ if __name__ == "__main__":
         print("  TEENYZERO FACTORY ONLINE")
         print("=" * 50)
         print(f"[*] Workers:   {worker_count}")
+        if worker_count != PROFILE.selfplay_workers and DEVICE in {'cuda', 'mps'}:
+            print(f"[*] Capped from profile default {PROFILE.selfplay_workers} based on available CPU budget")
         print(f"[*] Device:    {DEVICE}")
         print(f"[*] Dashboard: http://localhost:5002")
         print(f"[*] Data:      teenyzero/alphazero/data/replay_buffer/")
