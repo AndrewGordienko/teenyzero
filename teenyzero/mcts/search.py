@@ -37,14 +37,7 @@ class MCTS:
         self.evaluator.reset_profile()
         search_start = time.perf_counter()
         root_eval_ms = 0.0
-        if root is None:
-            root_eval_start = time.perf_counter()
-            priors, _ = self.evaluator.evaluate(board)
-            root = MCTSNode(priors)
-            root_eval_ms = (time.perf_counter() - root_eval_start) * 1000.0
-
-        if is_training:
-            self._add_root_dirichlet_noise(root)
+        root, root_eval_ms = self.prepare_root(board, root=root, is_training=is_training)
 
         sim_count = int(num_simulations) if num_simulations is not None else int(self.params["SIMULATIONS"])
         if sim_count <= 0:
@@ -108,6 +101,43 @@ class MCTS:
             backprop_ms=backprop_ms,
             total_ms=(time.perf_counter() - search_start) * 1000.0,
         )
+        return self._finalize_root(root)
+
+    def prepare_root(self, board: chess.Board, root=None, is_training=False):
+        root_eval_ms = 0.0
+        if root is None:
+            root_eval_start = time.perf_counter()
+            priors, _ = self.evaluator.evaluate(board)
+            root = MCTSNode(priors)
+            root_eval_ms = (time.perf_counter() - root_eval_start) * 1000.0
+
+        if is_training:
+            self._add_root_dirichlet_noise(root)
+        return root, root_eval_ms
+
+    def collect_leaf_batch(self, board: chess.Board, root: MCTSNode, count: int):
+        pending = []
+        selection_start = time.perf_counter()
+        for _ in range(max(0, int(count))):
+            leaf = self._select_to_leaf(board, root)
+            if leaf is not None:
+                pending.append(leaf)
+        selection_ms = (time.perf_counter() - selection_start) * 1000.0
+        terminal_leaves = sum(1 for item in pending if item["is_terminal"])
+        return pending, selection_ms, terminal_leaves
+
+    def evaluate_pending(self, pending):
+        leaf_eval_start = time.perf_counter()
+        self._evaluate_leaf_batch(pending)
+        return (time.perf_counter() - leaf_eval_start) * 1000.0
+
+    def apply_pending(self, pending):
+        backprop_start = time.perf_counter()
+        for item in pending:
+            self._apply_leaf_result(item)
+        return (time.perf_counter() - backprop_start) * 1000.0
+
+    def finalize_root(self, root: MCTSNode):
         return self._finalize_root(root)
 
     def advance_root(self, root: MCTSNode, move):

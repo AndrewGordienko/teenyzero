@@ -24,6 +24,8 @@ def bootstrap_runtime_cli(argv=None):
     parser.add_argument("--device", default=None)
     parser.add_argument("--profile", default=None)
     parser.add_argument("--board-backend", default=None)
+    parser.add_argument("--runtime-root", default=None)
+    parser.add_argument("--tmpdir", default=None)
     args, remaining = parser.parse_known_args(source_argv)
 
     profile_name = _normalized_profile_name(args.profile)
@@ -47,6 +49,14 @@ def bootstrap_runtime_cli(argv=None):
         os.environ["TEENYZERO_BOARD_BACKEND"] = board_backend
     elif board_backend == "auto":
         os.environ.pop("TEENYZERO_BOARD_BACKEND", None)
+
+    runtime_root = (args.runtime_root or "").strip()
+    if runtime_root:
+        os.environ["TEENYZERO_RUNTIME_ROOT"] = runtime_root
+
+    tmpdir = (args.tmpdir or "").strip()
+    if tmpdir:
+        os.environ["TMPDIR"] = tmpdir
 
     if argv is None:
         sys.argv[:] = [sys.argv[0], *remaining]

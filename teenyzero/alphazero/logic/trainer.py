@@ -1,5 +1,6 @@
 import contextlib
 import glob
+import json
 import os
 import time
 from dataclasses import dataclass
@@ -23,18 +24,32 @@ class ReplayFileInfo:
     sample_count: int
     mtime: float
     state_shape: tuple[int, ...]
+    shard_format: str = "npz"
+    states_path: str | None = None
+    pis_path: str | None = None
+    zs_path: str | None = None
+    meta_path: str | None = None
 
 
 class ReplayWindowDataset(Dataset):
-    def __init__(self, replay_files, sample_size=None, rng_seed=None, progress_callback=None):
+    def __init__(self, replay_files, sample_size=None, rng_seed=None, progress_callback=None, raw_cache_size=6):
         self.files = replay_files
         self.sample_size = sample_size
         self.rng_seed = rng_seed
         self.progress_callback = progress_callback
+        self.raw_cache_size = max(1, int(raw_cache_size))
         self.states = np.empty((0, *INPUT_SHAPE), dtype=np.float32)
         self.pis = np.empty((0, 4672), dtype=np.float32)
         self.zs = np.empty((0,), dtype=np.float32)
-        self._load_files()
+        self.file_index = {info.path: info for info in self.files}
+        self.sample_refs = []
+        self._raw_cache = {}
+        self._raw_cache_order = []
+        self.lazy_raw_mode = bool(self.files) and all(info.shard_format == "raw" for info in self.files)
+        if self.lazy_raw_mode:
+            self._build_sample_refs()
+        else:
+            self._load_files()
 
     def _load_files(self):
         total_files = len(self.files)
@@ -96,10 +111,94 @@ class ReplayWindowDataset(Dataset):
             self.pis = np.ascontiguousarray(np.concatenate(pi_chunks, axis=0))
             self.zs = np.ascontiguousarray(np.concatenate(z_chunks, axis=0))
 
+    def _build_sample_refs(self):
+        total_files = len(self.files)
+        total_window_samples = sum(info.sample_count for info in self.files)
+        target_samples = total_window_samples
+        if self.sample_size is not None:
+            target_samples = min(int(self.sample_size), total_window_samples)
+
+        if target_samples <= 0:
+            return
+
+        if target_samples >= total_window_samples:
+            selected_global = np.arange(total_window_samples, dtype=np.int64)
+        else:
+            rng = np.random.default_rng(self.rng_seed)
+            selected_global = np.sort(
+                rng.choice(total_window_samples, size=target_samples, replace=False)
+            )
+
+        build_started = time.perf_counter()
+        global_offset = 0
+        sample_refs = []
+        for file_idx, info in enumerate(self.files, start=1):
+            file_start = global_offset
+            file_end = global_offset + info.sample_count
+            local_start = int(np.searchsorted(selected_global, file_start, side="left"))
+            local_end = int(np.searchsorted(selected_global, file_end, side="left"))
+            chosen = selected_global[local_start:local_end] - file_start
+            if len(chosen) > 0:
+                sample_refs.extend((info.path, int(local_idx)) for local_idx in chosen.tolist())
+            global_offset = file_end
+            if self.progress_callback is not None and (file_idx == total_files or file_idx % 25 == 0):
+                elapsed_s = time.perf_counter() - build_started
+                safe_elapsed = max(elapsed_s, 1e-9)
+                self.progress_callback(
+                    {
+                        "stage": "indexing_replay_window",
+                        "loaded_files": file_idx,
+                        "total_files": total_files,
+                        "loaded_samples": len(sample_refs),
+                        "selected_samples": target_samples,
+                        "window_samples": total_window_samples,
+                        "elapsed_s": elapsed_s,
+                        "files_per_s": file_idx / safe_elapsed,
+                        "samples_per_s": len(sample_refs) / safe_elapsed,
+                    }
+                )
+        self.sample_refs = sample_refs
+
+    def _load_raw_arrays(self, info: ReplayFileInfo):
+        cached = self._raw_cache.get(info.path)
+        if cached is not None:
+            if info.path in self._raw_cache_order:
+                self._raw_cache_order.remove(info.path)
+            self._raw_cache_order.append(info.path)
+            return cached
+
+        arrays = (
+            np.load(info.states_path, mmap_mode="r"),
+            np.load(info.pis_path, mmap_mode="r"),
+            np.load(info.zs_path, mmap_mode="r"),
+        )
+        self._raw_cache[info.path] = arrays
+        self._raw_cache_order.append(info.path)
+
+        while len(self._raw_cache_order) > self.raw_cache_size:
+            oldest_path = self._raw_cache_order.pop(0)
+            self._raw_cache.pop(oldest_path, None)
+
+        return arrays
+
     def __len__(self):
+        if self.lazy_raw_mode:
+            return len(self.sample_refs)
         return int(self.zs.shape[0])
 
     def __getitem__(self, idx):
+        if self.lazy_raw_mode:
+            file_path, local_idx = self.sample_refs[idx]
+            info = self.file_index[file_path]
+            states, pis, zs = self._load_raw_arrays(info)
+            state = np.array(states[local_idx], dtype=np.float32, copy=True)
+            pi = np.array(pis[local_idx], dtype=np.float32, copy=True)
+            z = float(zs[local_idx])
+            return (
+                torch.from_numpy(state).float(),
+                torch.from_numpy(pi).float(),
+                torch.tensor([z], dtype=torch.float32),
+            )
         state = self.states[idx]
         pi = self.pis[idx]
         z = self.zs[idx]
@@ -127,6 +226,36 @@ def replay_file_infos(data_dir):
                 sample_count=sample_count,
                 mtime=os.path.getmtime(path),
                 state_shape=state_shape,
+                shard_format="npz",
+            )
+        )
+    for meta_path in glob.glob(os.path.join(data_dir, "*.meta.json")):
+        try:
+            with open(meta_path, "r", encoding="utf-8") as handle:
+                meta = json.load(handle)
+            sample_count = int(meta["sample_count"])
+            state_shape = tuple(int(dim) for dim in meta["state_shape"])
+            stem = meta_path[: -len(".meta.json")]
+            states_path = stem + ".states.npy"
+            pis_path = stem + ".pis.npy"
+            zs_path = stem + ".zs.npy"
+            if not (os.path.exists(states_path) and os.path.exists(pis_path) and os.path.exists(zs_path)):
+                continue
+        except Exception:
+            continue
+        if state_shape != INPUT_SHAPE:
+            continue
+        infos.append(
+            ReplayFileInfo(
+                path=stem,
+                sample_count=sample_count,
+                mtime=os.path.getmtime(meta_path),
+                state_shape=state_shape,
+                shard_format="raw",
+                states_path=states_path,
+                pis_path=pis_path,
+                zs_path=zs_path,
+                meta_path=meta_path,
             )
         )
     infos.sort(key=lambda item: item.mtime)
@@ -166,7 +295,12 @@ def prune_replay_buffer(data_dir, max_samples_to_keep):
     while infos and running_total > max_samples_to_keep:
         oldest = infos.pop(0)
         try:
-            os.remove(oldest.path)
+            if oldest.shard_format == "raw":
+                for path in (oldest.states_path, oldest.pis_path, oldest.zs_path, oldest.meta_path):
+                    if path:
+                        os.remove(path)
+            else:
+                os.remove(oldest.path)
             removed.append(oldest.path)
             running_total -= oldest.sample_count
         except OSError:

@@ -19,7 +19,7 @@ class OptionalBuildExt(build_ext):
 ext_modules = [
     Extension(
         "teenyzero.native._speedups",
-        ["native/speedups.cpp"],
+        ["native/speedups.cpp", "native/board.cpp"],
         language="c++",
     ),
 ]

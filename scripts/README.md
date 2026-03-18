@@ -5,7 +5,7 @@ The runnable surface is intentionally flat now. Use the top-level scripts only.
 - `scripts/benchmark_self_play.py`
   Benchmarks move latency and positions/sec for the current runtime/device/profile.
 - `scripts/run_actors.py`
-  Starts self-play workers plus the inference server.
+  Starts the self-play factory. On `mps`/`cuda` it now defaults to in-process batched self-play instead of the legacy queue/server layout.
 - `scripts/run_arena.py`
   Runs checkpoint promotion, arena Elo tracking, and optional Stockfish anchors.
 - `scripts/run_chess.py`
@@ -21,7 +21,14 @@ Common flags:
 - `--device h200 --profile h200`
 - `--profile mps`
 - `--board-backend native`
+- `--runtime-root /Volumes/External/teenyzero-runtime`
+- `--tmpdir /Volumes/External/teenyzero-tmp`
+- `--actor-workers 64`
+- `--stockfish-path /path/to/stockfish`
+- `--promotion-games 40 --baseline-games 24 --arena-simulations 640`
+- `--stockfish-time-ms 100`
 - `--no-dashboard` on `run_actors.py`
+- `--actor-mode inprocess` or `--actor-mode mp`
 
 Runtime state lives under `var/`:
 

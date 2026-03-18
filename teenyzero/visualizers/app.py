@@ -12,6 +12,7 @@ from pathlib import Path
 import chess
 import torch
 from flask import Flask, request, jsonify, render_template, redirect
+from teenyzero.alphazero.backend import create_board, move_from_uci
 from teenyzero.alphazero.checkpoints import build_model, load_checkpoint, save_checkpoint
 from teenyzero.alphazero.runtime import get_runtime_profile, get_runtime_selection, runtime_profile_payload
 from teenyzero.alphazero.search_session import SearchSession
@@ -45,10 +46,19 @@ app = Flask(
 RUNTIME_SELECTION = get_runtime_selection()
 model = build_model()
 evaluator = AlphaZeroEvaluator(model=model, device=RUNTIME_SELECTION.device)
+
+
+def _resolve_play_simulations():
+    raw_value = os.environ.get("TEENYZERO_PLAY_SIMULATIONS", "").strip()
+    if raw_value.isdigit():
+        return max(1, int(raw_value))
+    return max(160, get_runtime_profile().arena_simulations)
+
+
 engine = MCTS(
     evaluator=evaluator,
     params={
-        "SIMULATIONS": max(160, get_runtime_profile().arena_simulations),
+        "SIMULATIONS": _resolve_play_simulations(),
         "PARALLEL_THREADS": 1,
         "VIRTUAL_LOSS": 0.0,
         "LEAF_BATCH_SIZE": max(8, get_runtime_profile().selfplay_leaf_batch_size // 2),
@@ -56,7 +66,7 @@ engine = MCTS(
 )
 search_session = SearchSession(engine)
 
-board = chess.Board()
+board = create_board()
 _actor_process = None
 _actor_lock = threading.Lock()
 _arena_process = None
@@ -526,7 +536,7 @@ def move():
     uci = data.get("uci")
     
     try:
-        move = chess.Move.from_uci(uci)
+        move = move_from_uci(uci)
         if move in board.legal_moves:
             # 1. Human Move
             board.push(move)
@@ -558,7 +568,7 @@ def reset():
     side = data.get("side", "w")
     
     # Strictly reset to a fresh board instance
-    board = chess.Board()
+    board = create_board()
     search_session.reset()
     
     # If playing as Black, Engine makes the first move for White

@@ -178,6 +178,53 @@ MPS_PROFILE = RuntimeProfile(
 )
 
 
+MPS_FAST_PROFILE = RuntimeProfile(
+    name="mps_fast",
+    input_history_length=4,
+    piece_planes_per_position=12,
+    aux_planes=8,
+    model_version=5,
+    model_res_blocks=8,
+    model_channels=128,
+    policy_head_channels=24,
+    value_head_hidden=128,
+    replay_encoder_version=5,
+    replay_compress=True,
+    min_samples_ready=20_000,
+    train_increment=20_000,
+    replay_window_samples=120_000,
+    train_samples_per_cycle=40_000,
+    bootstrap_window_samples=80_000,
+    max_retained_samples=180_000,
+    train_batch_size=128,
+    train_epochs_per_cycle=1,
+    train_poll_interval_s=5.0,
+    train_optimizer="adamw",
+    train_lr=3e-4,
+    train_weight_decay=1e-4,
+    train_momentum=0.9,
+    train_grad_accum_steps=2,
+    train_num_workers=2,
+    train_pin_memory=False,
+    train_prefetch_factor=2,
+    train_compile=False,
+    train_precision="fp16",
+    max_grad_norm=2.0,
+    selfplay_workers=6,
+    selfplay_simulations=48,
+    selfplay_leaf_batch_size=32,
+    arena_simulations=96,
+    arena_promotion_games=12,
+    arena_baseline_games=4,
+    arena_promotion_threshold=0.55,
+    inference_single_batch=64,
+    inference_merged_batch=128,
+    inference_wait_timeout=0.0002,
+    inference_compile=False,
+    inference_precision="fp16",
+)
+
+
 H100_PROFILE = RuntimeProfile(
     name="h100",
     input_history_length=8,
@@ -275,6 +322,7 @@ H200_PROFILE = RuntimeProfile(
 PROFILES = {
     LOCAL_PROFILE.name: LOCAL_PROFILE,
     MPS_PROFILE.name: MPS_PROFILE,
+    MPS_FAST_PROFILE.name: MPS_FAST_PROFILE,
     H100_PROFILE.name: H100_PROFILE,
     H200_PROFILE.name: H200_PROFILE,
 }

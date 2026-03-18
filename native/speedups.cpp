@@ -1,6 +1,31 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 
+namespace teenyzero_native {
+PyObject* py_move_from_uci(PyObject*, PyObject*);
+PyObject* py_move_uci(PyObject*, PyObject*);
+PyObject* py_board_new(PyObject*, PyObject*);
+PyObject* py_board_clone(PyObject*, PyObject*);
+PyObject* py_board_turn(PyObject*, PyObject*);
+PyObject* py_board_fullmove_number(PyObject*, PyObject*);
+PyObject* py_board_halfmove_clock(PyObject*, PyObject*);
+PyObject* py_board_ep_square(PyObject*, PyObject*);
+PyObject* py_board_castling_rights(PyObject*, PyObject*);
+PyObject* py_board_piece_masks(PyObject*, PyObject*);
+PyObject* py_board_legal_moves(PyObject*, PyObject*);
+PyObject* py_board_push(PyObject*, PyObject*);
+PyObject* py_board_pop(PyObject*, PyObject*);
+PyObject* py_board_move_stack(PyObject*, PyObject*);
+PyObject* py_board_is_game_over(PyObject*, PyObject*);
+PyObject* py_board_is_checkmate(PyObject*, PyObject*);
+PyObject* py_board_result(PyObject*, PyObject*);
+PyObject* py_board_can_claim_threefold_repetition(PyObject*, PyObject*);
+PyObject* py_board_can_claim_fifty_moves(PyObject*, PyObject*);
+PyObject* py_board_is_repetition(PyObject*, PyObject*);
+PyObject* py_board_zobrist_hash(PyObject*, PyObject*);
+PyObject* py_board_fen(PyObject*, PyObject*);
+}  // namespace teenyzero_native
+
 namespace {
 
 int mirror_square(int square) {
@@ -104,6 +129,28 @@ PyObject* py_move_to_idx(PyObject*, PyObject* args) {
 PyMethodDef kMethods[] = {
     {"move_signature", py_move_signature, METH_VARARGS, "Pack a move into a compact integer signature."},
     {"move_to_idx", py_move_to_idx, METH_VARARGS, "Convert a move into the AlphaZero policy index."},
+    {"move_from_uci", teenyzero_native::py_move_from_uci, METH_VARARGS, "Convert a UCI move into the packed move format."},
+    {"move_uci", teenyzero_native::py_move_uci, METH_VARARGS, "Convert a packed move into UCI."},
+    {"board_new", teenyzero_native::py_board_new, METH_VARARGS, "Create a native chess board."},
+    {"board_clone", teenyzero_native::py_board_clone, METH_VARARGS, "Clone a native chess board."},
+    {"board_turn", teenyzero_native::py_board_turn, METH_VARARGS, "Return side to move."},
+    {"board_fullmove_number", teenyzero_native::py_board_fullmove_number, METH_VARARGS, "Return fullmove number."},
+    {"board_halfmove_clock", teenyzero_native::py_board_halfmove_clock, METH_VARARGS, "Return halfmove clock."},
+    {"board_ep_square", teenyzero_native::py_board_ep_square, METH_VARARGS, "Return en-passant square."},
+    {"board_castling_rights", teenyzero_native::py_board_castling_rights, METH_VARARGS, "Return castling rights bitmask."},
+    {"board_piece_masks", teenyzero_native::py_board_piece_masks, METH_VARARGS, "Return aggregate piece masks."},
+    {"board_legal_moves", teenyzero_native::py_board_legal_moves, METH_VARARGS, "Return packed legal moves."},
+    {"board_push", teenyzero_native::py_board_push, METH_VARARGS, "Push a packed move."},
+    {"board_pop", teenyzero_native::py_board_pop, METH_VARARGS, "Pop the last move."},
+    {"board_move_stack", teenyzero_native::py_board_move_stack, METH_VARARGS, "Return packed move stack."},
+    {"board_is_game_over", teenyzero_native::py_board_is_game_over, METH_VARARGS, "Return whether the game is over."},
+    {"board_is_checkmate", teenyzero_native::py_board_is_checkmate, METH_VARARGS, "Return whether the side to move is checkmated."},
+    {"board_result", teenyzero_native::py_board_result, METH_VARARGS, "Return game result string."},
+    {"board_can_claim_threefold_repetition", teenyzero_native::py_board_can_claim_threefold_repetition, METH_VARARGS, "Return whether threefold repetition can be claimed."},
+    {"board_can_claim_fifty_moves", teenyzero_native::py_board_can_claim_fifty_moves, METH_VARARGS, "Return whether the fifty-move rule can be claimed."},
+    {"board_is_repetition", teenyzero_native::py_board_is_repetition, METH_VARARGS, "Return repetition count test."},
+    {"board_zobrist_hash", teenyzero_native::py_board_zobrist_hash, METH_VARARGS, "Return Zobrist hash."},
+    {"board_fen", teenyzero_native::py_board_fen, METH_VARARGS, "Return FEN string."},
     {nullptr, nullptr, 0, nullptr},
 };
 

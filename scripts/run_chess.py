@@ -8,6 +8,7 @@ bootstrap_runtime_cli()
 
 import chess
 
+from teenyzero.alphazero.backend import create_board
 from teenyzero.alphazero.checkpoints import build_model, load_checkpoint
 from teenyzero.alphazero.runtime import get_runtime_selection
 from teenyzero.alphazero.search_session import SearchSession
@@ -38,7 +39,7 @@ def maybe_reload_model(model, evaluator, model_path, last_mtime, session=None):
 
 def run_self_play(session, model, evaluator, model_path):
     """The terminal-based self-play loop."""
-    board = chess.Board()
+    board = create_board()
     last_mtime = None
     session.reset()
     print("\n" + "="*30)

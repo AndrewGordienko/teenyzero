@@ -15,7 +15,13 @@ python3.11 setup.py build_ext --inplace
 Benchmark:
 
 ```bash
-python3.11 scripts/benchmark_self_play.py --device mps --profile mps --board-backend native --workers 4 --searches-per-worker 8
+python3.11 scripts/benchmark_self_play.py --device mps --profile mps --board-backend native --actor-mode inprocess --workers 4 --searches-per-worker 8
+```
+
+Fast self-play benchmark on MPS with the reduced-size profile:
+
+```bash
+python3.11 scripts/benchmark_self_play.py --device mps --profile mps_fast --board-backend native --actor-mode inprocess --workers 4 --searches-per-worker 8
 ```
 
 Gameplay UI:
@@ -27,7 +33,7 @@ python3.11 scripts/run_chess.py --device mps --profile mps --board-backend nativ
 Self-play factory:
 
 ```bash
-python3.11 scripts/run_actors.py --device mps --profile mps --board-backend native --no-dashboard
+python3.11 scripts/run_actors.py --device mps --profile mps --board-backend native --actor-mode inprocess --no-dashboard
 ```
 
 Full dashboard stack:
@@ -36,18 +42,30 @@ Full dashboard stack:
 python3.11 scripts/run_visualizers.py --device mps --profile mps --board-backend native
 ```
 
+Gameplay-only visualizer on MPS without actors, trainer, or arena contending for the device:
+
+```bash
+python3.11 scripts/run_visualizers.py --device mps --profile mps --board-backend native --no-actors --no-trainer --no-arena --play-simulations 64
+```
+
+Gameplay-only visualizer on the reduced-size MPS profile:
+
+```bash
+python3.11 scripts/run_visualizers.py --device mps --profile mps_fast --board-backend native --no-actors --no-trainer --no-arena --play-simulations 48
+```
+
 ## H200
 
 Benchmark:
 
 ```bash
-python3.11 scripts/benchmark_self_play.py --device h200 --profile h200 --board-backend native --workers 16 --searches-per-worker 8
+python3.11 scripts/benchmark_self_play.py --device h200 --profile h200 --board-backend native --actor-mode inprocess --workers 16 --searches-per-worker 8
 ```
 
 Factory:
 
 ```bash
-python3.11 scripts/run_actors.py --device h200 --profile h200 --board-backend native --no-dashboard
+python3.11 scripts/run_actors.py --device h200 --profile h200 --board-backend native --actor-mode inprocess --no-dashboard
 ```
 
 Full stack:

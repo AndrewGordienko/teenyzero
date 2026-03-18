@@ -31,6 +31,8 @@ from teenyzero.paths import (
     TRAINING_HISTORY_PATH,
     TRAINING_STATE_PATH,
     ensure_runtime_dirs,
+    runtime_free_bytes,
+    runtime_low_disk_watermark_bytes,
     runtime_paths_payload,
 )
 
@@ -153,9 +155,16 @@ def _write_training_state(state):
         if exc.errno != errno.ENOSPC:
             raise
         _reclaim_runtime_space()
-        with open(tmp_path, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle, indent=2, sort_keys=True, allow_nan=False)
-        os.replace(tmp_path, TRAINING_STATE_PATH)
+        try:
+            with open(tmp_path, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, separators=(",", ":"), sort_keys=True, allow_nan=False)
+            os.replace(tmp_path, TRAINING_STATE_PATH)
+        except OSError as retry_exc:
+            if retry_exc.errno != errno.ENOSPC:
+                raise
+            # Last-resort fallback: overwrite the target in place with compact JSON.
+            with open(TRAINING_STATE_PATH, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, separators=(",", ":"), sort_keys=True, allow_nan=False)
 
 
 def _mark_stage(state, stage, **extra):
@@ -190,6 +199,10 @@ def _append_training_history(entry):
     except OSError as exc:
         if exc.errno != errno.ENOSPC:
             raise
+        _reclaim_runtime_space()
+
+def _runtime_under_disk_pressure():
+    return runtime_free_bytes() <= runtime_low_disk_watermark_bytes()
 
 
 def _reclaim_runtime_space():
@@ -200,9 +213,16 @@ def _reclaim_runtime_space():
 
     try:
         archive_paths = sorted(MODEL_ARCHIVE_PATH.glob("*.pth"))
-        while len(archive_paths) > 2:
+        while len(archive_paths) > 1:
             oldest = archive_paths.pop(0)
             oldest.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+    try:
+        history_path = Path(TRAINING_HISTORY_PATH)
+        if history_path.exists():
+            history_path.unlink(missing_ok=True)
     except Exception:
         pass
 
@@ -308,6 +328,9 @@ def main():
     print("[Trainer] Continuous trainer online.")
 
     while True:
+        if _runtime_under_disk_pressure():
+            _reclaim_runtime_space()
+
         scan_started = time.perf_counter()
         _mark_stage(
             state,

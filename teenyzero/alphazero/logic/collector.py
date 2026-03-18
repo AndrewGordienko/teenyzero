@@ -1,11 +1,14 @@
 import os
 import errno
+import json
 import numpy as np
 import chess
 from collections import Counter, deque
 
+from teenyzero.alphazero.backend import create_board
 from teenyzero.alphazero.config import REPLAY_ENCODER_VERSION
 from teenyzero.alphazero.runtime import get_runtime_profile
+from teenyzero.paths import runtime_free_bytes, runtime_low_disk_watermark_bytes
 
 
 PROFILE = get_runtime_profile()
@@ -61,11 +64,32 @@ class DataCollector:
             "cache_misses": 0.0,
         }
         self.last_profile = None
+        self.replay_shard_format = self._resolve_replay_shard_format()
+
+    def _low_disk_pressure(self):
+        return runtime_free_bytes() <= runtime_low_disk_watermark_bytes()
+
+    def _resolve_replay_shard_format(self):
+        raw_value = os.environ.get("TEENYZERO_REPLAY_SHARD_FORMAT", "").strip().lower()
+        if raw_value in {"npz", "raw"}:
+            return raw_value
+        return "raw" if not PROFILE.replay_compress else "npz"
+
+    def _raw_shard_paths(self, filename):
+        stem = filename[:-4] if filename.endswith(".npz") else filename
+        base = os.path.join(self.buffer_path, stem)
+        return {
+            "stem": base,
+            "states": base + ".states.npy",
+            "pis": base + ".pis.npy",
+            "zs": base + ".zs.npy",
+            "meta": base + ".meta.json",
+        }
 
     def collect_game(self, worker_id=0, stats_dict=None):
         import time
         game_start = time.perf_counter()
-        board = chess.Board()
+        board = create_board()
         game_history = []
         move_count = 0
         root = None
@@ -132,7 +156,10 @@ class DataCollector:
 
             if move_count == 0:
                 try:
-                    self.opening_stats[board.san(selected_move)] += 1
+                    if hasattr(board, "san"):
+                        self.opening_stats[board.san(selected_move)] += 1
+                    else:
+                        self.opening_stats[getattr(selected_move, "uci", lambda: str(selected_move))()] += 1
                 except Exception:
                     pass
 
@@ -443,8 +470,6 @@ class DataCollector:
         if not game_data:
             return
 
-        path = os.path.join(self.buffer_path, filename)
-        saver = np.savez_compressed if PROFILE.replay_compress else np.savez
         payload = {
             "states": np.array([g["state"] for g in game_data], dtype=np.float32),
             "pis": np.array([g["pi"] for g in game_data], dtype=np.float32),
@@ -452,23 +477,92 @@ class DataCollector:
             "encoder_version": np.int32(REPLAY_ENCODER_VERSION),
             "runtime_profile": np.array(PROFILE.name),
         }
+        if self._low_disk_pressure():
+            self._prune_oldest_replay_files(max_remove=96, target_free_bytes=runtime_low_disk_watermark_bytes())
         try:
-            saver(path, **payload)
+            self._write_replay_payload(filename, payload)
         except OSError as exc:
             if exc.errno != errno.ENOSPC:
                 raise
-            self._prune_oldest_replay_files()
-            saver(path, **payload)
+            self._prune_oldest_replay_files(max_remove=256, target_free_bytes=runtime_low_disk_watermark_bytes())
+            self._write_replay_payload(filename, payload)
 
-    def _prune_oldest_replay_files(self, max_remove=24):
+    def _write_replay_payload(self, filename, payload):
+        if self.replay_shard_format == "raw":
+            self._write_raw_replay_payload(filename, payload)
+            return
+        path = os.path.join(self.buffer_path, filename)
+        saver = np.savez_compressed if PROFILE.replay_compress else np.savez
+        saver(path, **payload)
+
+    def _write_raw_replay_payload(self, filename, payload):
+        paths = self._raw_shard_paths(filename)
+        tmp_paths = {key: value + ".tmp" for key, value in paths.items() if key != "stem"}
+
+        with open(tmp_paths["states"], "wb") as handle:
+            np.save(handle, payload["states"], allow_pickle=False)
+        with open(tmp_paths["pis"], "wb") as handle:
+            np.save(handle, payload["pis"], allow_pickle=False)
+        with open(tmp_paths["zs"], "wb") as handle:
+            np.save(handle, payload["zs"], allow_pickle=False)
+        with open(tmp_paths["meta"], "w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "sample_count": int(payload["zs"].shape[0]),
+                    "state_shape": list(payload["states"].shape[1:]),
+                    "encoder_version": int(payload["encoder_version"]),
+                    "runtime_profile": PROFILE.name,
+                    "format": "raw",
+                },
+                handle,
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+
+        os.replace(tmp_paths["states"], paths["states"])
+        os.replace(tmp_paths["pis"], paths["pis"])
+        os.replace(tmp_paths["zs"], paths["zs"])
+        os.replace(tmp_paths["meta"], paths["meta"])
+
+    def _prune_oldest_replay_files(self, max_remove=24, target_free_bytes=0):
         replay_files = []
         for entry in os.scandir(self.buffer_path):
             if entry.is_file() and entry.name.endswith(".npz"):
-                replay_files.append((entry.stat().st_mtime, entry.path))
+                stat = entry.stat()
+                replay_files.append((stat.st_mtime, "npz", entry.path, int(stat.st_size)))
+            elif entry.is_file() and entry.name.endswith(".meta.json"):
+                stem = entry.path[: -len(".meta.json")]
+                shard_paths = [
+                    stem + ".states.npy",
+                    stem + ".pis.npy",
+                    stem + ".zs.npy",
+                    entry.path,
+                ]
+                if not all(os.path.exists(path) for path in shard_paths[:-1]):
+                    continue
+                size_bytes = 0
+                for path in shard_paths:
+                    try:
+                        size_bytes += int(os.path.getsize(path))
+                    except OSError:
+                        size_bytes += 0
+                replay_files.append((entry.stat().st_mtime, "raw", stem, size_bytes))
 
         replay_files.sort()
-        for _, path in replay_files[:max_remove]:
+        removed = 0
+        free_bytes = runtime_free_bytes()
+        for _, shard_format, path, size_bytes in replay_files:
+            if removed >= max_remove:
+                break
+            if target_free_bytes > 0 and free_bytes >= target_free_bytes:
+                break
             try:
-                os.remove(path)
+                if shard_format == "raw":
+                    for suffix in (".states.npy", ".pis.npy", ".zs.npy", ".meta.json"):
+                        os.remove(path + suffix)
+                else:
+                    os.remove(path)
+                removed += 1
+                free_bytes += size_bytes
             except OSError:
                 continue

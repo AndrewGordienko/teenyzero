@@ -56,6 +56,7 @@ class AlphaZeroEvaluator:
         self.move_index_cache = {}
         self.board_backend = resolve_board_backend_name()
         self.native_speedups = native_speedups_module() if self.board_backend == "native" else None
+        self.queue_payload_dtype = np.float16 if device in {"mps", "cuda"} else np.float32
         if self.device == "cuda" and PROFILE.inference_precision == "bf16":
             self.inference_dtype = torch.bfloat16
         else:
@@ -72,6 +73,8 @@ class AlphaZeroEvaluator:
             self.model.to(device=self.device, dtype=self.inference_dtype)
             if self.use_channels_last:
                 self.model.to(memory_format=torch.channels_last)
+            if self.device == "cuda" and PROFILE.inference_compile and hasattr(torch, "compile"):
+                self.model = torch.compile(self.model)
             self.model.eval()
 
         self._dir_map = self._build_direction_map()
@@ -184,6 +187,7 @@ class AlphaZeroEvaluator:
         return results
 
     def _evaluate_local(self, encoded_state, board: chess.Board):
+        legal_moves, legal_indices = self._get_legal_moves_and_indices(board)
         tensor = torch.from_numpy(encoded_state).unsqueeze(0).to(
             device=self.device,
             dtype=self.inference_dtype,
@@ -197,9 +201,14 @@ class AlphaZeroEvaluator:
         self.profile["inference_forward_ms"] += (time.perf_counter() - forward_start) * 1000.0
         self.profile["single_requests"] += 1
 
-        logits = policy_logits.detach().cpu().numpy()[0]
         v = float(value.item())
-        return self._mask_and_normalize_logits(logits, board, v)
+        return self._mask_and_normalize_logits(
+            policy_logits[0],
+            board,
+            v,
+            legal_moves=legal_moves,
+            legal_indices=legal_indices,
+        )
 
     def _evaluate_many_local(self, encoded_states, boards):
         tensor = torch.from_numpy(np.asarray(encoded_states, dtype=np.float32)).to(
@@ -215,17 +224,28 @@ class AlphaZeroEvaluator:
         self.profile["inference_forward_ms"] += (time.perf_counter() - forward_start) * 1000.0
         self.profile["batch_requests"] += 1
 
-        logits_batch = policy_logits.detach().cpu().numpy()
         values_batch = values.detach().cpu().numpy().reshape(-1)
 
         results = []
-        for logits, value, board in zip(logits_batch, values_batch, boards):
-            results.append(self._mask_and_normalize_logits(logits, board, float(value)))
+        for logits, value, board in zip(policy_logits, values_batch, boards):
+            legal_moves, legal_indices = self._get_legal_moves_and_indices(board)
+            results.append(
+                self._mask_and_normalize_logits(
+                    logits,
+                    board,
+                    float(value),
+                    legal_moves=legal_moves,
+                    legal_indices=legal_indices,
+                )
+            )
         return results
 
     def _evaluate_batched(self, encoded_state, board: chess.Board):
         task_id = self._next_task_id()
-        self.task_queue.put((task_id, encoded_state, self.worker_id, False))
+        legal_moves, legal_indices = self._get_legal_moves_and_indices(board)
+        queue_indices = legal_indices.astype(np.int16, copy=False)
+        queue_encoded = np.asarray(encoded_state, dtype=self.queue_payload_dtype)
+        self.task_queue.put((task_id, queue_encoded, self.worker_id, False, queue_indices))
 
         wait_start = time.perf_counter()
         while True:
@@ -243,14 +263,23 @@ class AlphaZeroEvaluator:
                 self.profile["inference_wait_ms"] += (time.perf_counter() - wait_start) * 1000.0
                 self.profile["inference_forward_ms"] += float(meta.get("forward_ms", 0.0))
                 self.profile["single_requests"] += 1
+                if meta.get("sparse_policy", False):
+                    return MovePriors(legal_moves, np.asarray(logits, dtype=np.float32)), self._safe_value(v)
                 return self._mask_and_normalize_logits(logits, board, float(v))
 
             self.pending_results[returned_task_id] = (logits, v, is_batch, meta)
 
     def _evaluate_many_batched(self, encoded_states, boards):
         task_id = self._next_task_id()
-        encoded_batch = np.asarray(encoded_states, dtype=np.float32)
-        self.task_queue.put((task_id, encoded_batch, self.worker_id, True))
+        legal_moves_batch = []
+        queue_legal_indices = []
+        for board in boards:
+            legal_moves, legal_indices = self._get_legal_moves_and_indices(board)
+            legal_moves_batch.append(legal_moves)
+            queue_legal_indices.append(legal_indices.astype(np.int16, copy=False))
+
+        encoded_batch = np.asarray(encoded_states, dtype=self.queue_payload_dtype)
+        self.task_queue.put((task_id, encoded_batch, self.worker_id, True, tuple(queue_legal_indices)))
 
         wait_start = time.perf_counter()
         if task_id in self.pending_results:
@@ -277,24 +306,45 @@ class AlphaZeroEvaluator:
         self.profile["inference_forward_ms"] += float(meta.get("forward_ms", 0.0))
         self.profile["batch_requests"] += 1
 
+        if meta.get("sparse_policy", False):
+            results = []
+            for legal_moves, probs, value in zip(legal_moves_batch, logits_batch, values_batch):
+                results.append(
+                    (
+                        MovePriors(legal_moves, np.asarray(probs, dtype=np.float32)),
+                        self._safe_value(value),
+                    )
+                )
+            return results
+
         results = []
         for logits, value, board in zip(logits_batch, values_batch, boards):
             results.append(self._mask_and_normalize_logits(logits, board, float(value)))
         return results
 
-    def _mask_and_normalize_logits(self, logits, board: chess.Board, v: float):
+    def _mask_and_normalize_logits(self, logits, board: chess.Board, v: float, legal_moves=None, legal_indices=None):
         """
         Normalize only over legal moves, using logits directly.
         """
         mask_start = time.perf_counter()
-        legal_moves, legal_indices = self._get_legal_moves_and_indices(board)
+        if legal_moves is None or legal_indices is None:
+            legal_moves, legal_indices = self._get_legal_moves_and_indices(board)
+        safe_value = self._safe_value(v)
         if not legal_moves:
             self.profile["mask_ms"] += (time.perf_counter() - mask_start) * 1000.0
             empty = MovePriors((), np.empty((0,), dtype=np.float32))
-            return empty, float(np.clip(np.nan_to_num(v, nan=0.0, posinf=1.0, neginf=-1.0), -1.0, 1.0))
+            return empty, safe_value
+
+        if isinstance(logits, torch.Tensor):
+            probs = self._normalize_sparse_tensor(logits, legal_indices)
+            if probs is None:
+                uniform = np.full(len(legal_moves), 1.0 / len(legal_moves), dtype=np.float32)
+                self.profile["mask_ms"] += (time.perf_counter() - mask_start) * 1000.0
+                return MovePriors(legal_moves, uniform), safe_value
+            self.profile["mask_ms"] += (time.perf_counter() - mask_start) * 1000.0
+            return MovePriors(legal_moves, probs), safe_value
 
         legal_logits = np.asarray(logits[legal_indices], dtype=np.float32)
-        safe_value = float(np.clip(np.nan_to_num(v, nan=0.0, posinf=1.0, neginf=-1.0), -1.0, 1.0))
         if not np.isfinite(legal_logits).all():
             uniform = np.full(len(legal_moves), 1.0 / len(legal_moves), dtype=np.float32)
             self.profile["mask_ms"] += (time.perf_counter() - mask_start) * 1000.0
@@ -312,6 +362,16 @@ class AlphaZeroEvaluator:
         inv_total = 1.0 / total
         self.profile["mask_ms"] += (time.perf_counter() - mask_start) * 1000.0
         return MovePriors(legal_moves, exp_vals * inv_total), safe_value
+
+    def _normalize_sparse_tensor(self, logits, legal_indices):
+        indices = torch.as_tensor(legal_indices, device=logits.device, dtype=torch.long)
+        legal_logits = logits.float().index_select(0, indices)
+        if not bool(torch.isfinite(legal_logits).all().item()):
+            return None
+        probs = torch.softmax(legal_logits, dim=0)
+        if not bool(torch.isfinite(probs).all().item()):
+            return None
+        return probs.detach().cpu().numpy().astype(np.float32, copy=False)
 
     def encode_board(self, board: chess.Board):
         planes = np.zeros((INPUT_PLANES, 8, 8), dtype=np.float32)
@@ -487,8 +547,9 @@ class AlphaZeroEvaluator:
             self._move_signature(move)
             for move in (board.move_stack[-history_count:] if history_count > 0 else ())
         )
+        zobrist_value = board.zobrist_hash() if hasattr(board, "zobrist_hash") else int(chess.polyglot.zobrist_hash(board))
         return (
-            int(chess.polyglot.zobrist_hash(board)),
+            int(zobrist_value),
             int(board.turn),
             int(board.castling_rights),
             ep_square,
@@ -511,6 +572,9 @@ class AlphaZeroEvaluator:
             "single_requests": 0,
             "batch_requests": 0,
         }
+
+    def _safe_value(self, value):
+        return float(np.clip(np.nan_to_num(value, nan=0.0, posinf=1.0, neginf=-1.0), -1.0, 1.0))
 
     def _move_signature(self, move: chess.Move):
         promotion = int(move.promotion or 0)

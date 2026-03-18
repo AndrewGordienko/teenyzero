@@ -38,12 +38,25 @@ RUNTIME = get_runtime_selection()
 PROFILE = RUNTIME.profile
 PROFILE_SETTINGS = runtime_profile_payload(PROFILE)
 
+def _env_int(name: str, default: int, minimum: int = 1) -> int:
+    raw_value = os.environ.get(name, "").strip()
+    if raw_value.isdigit():
+        return max(minimum, int(raw_value))
+    return int(default)
 
-PROMOTION_GAMES = PROFILE.arena_promotion_games
+def _env_float(name: str, default: float, minimum: float = 0.0) -> float:
+    raw_value = os.environ.get(name, "").strip()
+    try:
+        return max(minimum, float(raw_value))
+    except ValueError:
+        return float(default)
+
+PROMOTION_GAMES = _env_int("TEENYZERO_ARENA_PROMOTION_GAMES", PROFILE.arena_promotion_games)
 PROMOTION_THRESHOLD = PROFILE.arena_promotion_threshold
-BASELINE_GAMES = PROFILE.arena_baseline_games
+BASELINE_GAMES = _env_int("TEENYZERO_ARENA_BASELINE_GAMES", PROFILE.arena_baseline_games)
 ARENA_MAX_PLIES = 180
-ARENA_SIMULATIONS = PROFILE.arena_simulations
+ARENA_SIMULATIONS = _env_int("TEENYZERO_ARENA_SIMULATIONS", PROFILE.arena_simulations)
+STOCKFISH_TIME_S = _env_float("TEENYZERO_STOCKFISH_TIME_MS", 50.0, minimum=1.0) / 1000.0
 POLL_INTERVAL_S = 15.0
 ELO_K = 24.0
 DEFAULT_RATING = 1000.0
@@ -105,6 +118,9 @@ def _default_arena_state():
         "best_cycle": 0,
         "promotion_games": PROMOTION_GAMES,
         "promotion_threshold": PROMOTION_THRESHOLD,
+        "baseline_games": BASELINE_GAMES,
+        "arena_simulations": ARENA_SIMULATIONS,
+        "stockfish_time_s": STOCKFISH_TIME_S,
         "runtime_profile": PROFILE.name,
         "runtime_profile_settings": PROFILE_SETTINGS,
         "runtime_paths": runtime_paths_payload(),
@@ -366,7 +382,7 @@ def _play_external_match(player_id, player_path, opponent, device, num_games):
     stockfish = UCIEngineAgent(
         opponent["path"],
         opponent["options"],
-        chess.engine.Limit(time=0.05),
+        chess.engine.Limit(time=STOCKFISH_TIME_S),
     )
     games = []
     try:
@@ -433,6 +449,10 @@ def main():
     state["runtime_profile"] = PROFILE.name
     state["runtime_profile_settings"] = PROFILE_SETTINGS
     state["runtime_paths"] = runtime_paths_payload()
+    state["promotion_games"] = PROMOTION_GAMES
+    state["baseline_games"] = BASELINE_GAMES
+    state["arena_simulations"] = ARENA_SIMULATIONS
+    state["stockfish_time_s"] = STOCKFISH_TIME_S
     state["stockfish_path"] = stockfish_path
     state["stockfish_available"] = bool(_stockfish_opponents(stockfish_path))
     _write_json(ARENA_STATE_PATH, state)
