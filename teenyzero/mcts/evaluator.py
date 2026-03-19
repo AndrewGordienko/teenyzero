@@ -224,7 +224,7 @@ class AlphaZeroEvaluator:
         self.profile["inference_forward_ms"] += (time.perf_counter() - forward_start) * 1000.0
         self.profile["batch_requests"] += 1
 
-        values_batch = values.detach().cpu().numpy().reshape(-1)
+        values_batch = values.float().detach().cpu().numpy().reshape(-1)
 
         results = []
         for logits, value, board in zip(policy_logits, values_batch, boards):
