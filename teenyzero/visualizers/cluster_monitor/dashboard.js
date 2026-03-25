@@ -14,6 +14,7 @@ const pieceMap = {
 };
 
 const flippedWorkers = new Set();
+const throughputSamples = [];
 
 function fmtNumber(value, digits = 1) {
     const num = Number(value || 0);
@@ -53,8 +54,11 @@ function safeWorkers(data) {
 function aggregateWorkers(workers) {
     const empty = {
         avgMs: Object.fromEntries(timingKeys.map(([key]) => [key, 0])),
+        avgBatchMs: Object.fromEntries([["total", 0], ...timingKeys.map(([key]) => [key, 0])]),
         avgTotalMs: 0,
+        avgSlotPlyIntervalMs: 0,
         avgSimulations: 0,
+        avgTotalSimulations: 0,
         avgCacheHitRate: 0,
         totalGames: 0,
         totalPositions: 0,
@@ -66,9 +70,13 @@ function aggregateWorkers(workers) {
         const avg = worker.search?.avg_ms || {};
         for (const [key] of timingKeys) {
             empty.avgMs[key] += Number(avg[key] || 0);
+            empty.avgBatchMs[key] += Number(worker.search?.batch_ms?.[key] || 0);
         }
         empty.avgTotalMs += Number(avg.total || 0);
+        empty.avgBatchMs.total += Number(worker.search?.batch_ms?.total || 0);
+        empty.avgSlotPlyIntervalMs += Number(worker.search?.slot_ply_interval_ms || 0);
         empty.avgSimulations += Number(worker.search?.avg_simulations || 0);
+        empty.avgTotalSimulations += Number(worker.search?.simulations_completed_total || 0);
         empty.avgCacheHitRate += Number(worker.search?.avg_cache_hit_rate || 0);
         empty.totalGames += Number(worker.total_games || 0);
         empty.totalPositions += Number(worker.total_positions_saved || 0);
@@ -79,7 +87,10 @@ function aggregateWorkers(workers) {
         empty.avgMs[key] /= n;
     }
     empty.avgTotalMs /= n;
+    empty.avgBatchMs.total /= n;
+    empty.avgSlotPlyIntervalMs /= n;
     empty.avgSimulations /= n;
+    empty.avgTotalSimulations /= n;
     empty.avgCacheHitRate /= n;
     return empty;
 }
@@ -119,6 +130,26 @@ function aggregateClusterTotals(cluster) {
     return combined;
 }
 
+function positionsPerSecond(clusterTotals) {
+    const now = Date.now();
+    throughputSamples.push({
+        ts: now,
+        positions: Number(clusterTotals.positions || 0),
+    });
+
+    while (throughputSamples.length > 1 && (now - throughputSamples[0].ts) > 15000) {
+        throughputSamples.shift();
+    }
+
+    if (throughputSamples.length < 2) return 0;
+
+    const oldest = throughputSamples[0];
+    const newest = throughputSamples[throughputSamples.length - 1];
+    const dtMs = Math.max(1, newest.ts - oldest.ts);
+    const dPositions = Math.max(0, newest.positions - oldest.positions);
+    return (dPositions * 1000.0) / dtMs;
+}
+
 function renderHeroResults(clusterTotals) {
     const target = document.getElementById("hero-results");
     target.innerHTML = `
@@ -149,13 +180,21 @@ function renderSummary(workers, cluster, aggregate, combinedTiming, clusterTotal
     const target = document.getElementById("summary");
     const actorMode = String(cluster.config?.actor_mode || "");
     const moveNote = actorMode === "inprocess"
-        ? "per-game average across active concurrent slots"
+        ? "normalized batch time; not wall-clock slot progress"
         : "average end-to-end move time";
+    const livePositionsPerSecond = positionsPerSecond(clusterTotals);
     const cards = [
         {
             label: "Move Total",
             value: `${fmtNumber(aggregate.avgTotalMs)} ms`,
             note: moveNote,
+        },
+        {
+            label: "Slot Ply Interval",
+            value: `${fmtNumber(actorMode === "inprocess" ? aggregate.avgSlotPlyIntervalMs : aggregate.avgTotalMs)} ms`,
+            note: actorMode === "inprocess"
+                ? "actual wall-clock time for one slot to advance one ply"
+                : "same as move total outside in-process batching",
         },
         {
             label: "Leaf Eval",
@@ -181,6 +220,11 @@ function renderSummary(workers, cluster, aggregate, combinedTiming, clusterTotal
             label: "Game Time",
             value: `${fmtNumber(clusterTotals.games > 0 ? (clusterTotals.gameTimeMs / clusterTotals.games) / 1000.0 : 0)} s`,
             note: "average time to play a game",
+        },
+        {
+            label: "Positions / Sec",
+            value: fmtNumber(livePositionsPerSecond),
+            note: "live saved-position throughput over the last 15 seconds",
         },
     ];
 
@@ -241,7 +285,9 @@ function workerFrontMarkup(worker) {
             <div class="kv-item"><span class="k">Positions Saved</span><span class="v">${fmtInt(worker.total_positions_saved)}</span></div>
             <div class="kv-item"><span class="k">Avg Move Time</span><span class="v">${fmtNumber(search.avg_ms?.total || 0)} ms</span></div>
             <div class="kv-item"><span class="k">Last Move Time</span><span class="v">${fmtNumber(last.total || 0)} ms</span></div>
+            <div class="kv-item"><span class="k">Slot Ply Interval</span><span class="v">${fmtNumber(search.slot_ply_interval_ms || last.total || 0)} ms</span></div>
             <div class="kv-item"><span class="k">Batch Active Games</span><span class="v">${fmtInt(search.batch_active_games || 1)}</span></div>
+            <div class="kv-item"><span class="k">Batch Simulations</span><span class="v">${fmtInt(search.simulations_completed_total || 0)}</span></div>
             <div class="kv-item"><span class="k">Inference Wait</span><span class="v">${fmtNumber(search.avg_ms?.inference_wait || 0)} ms</span></div>
             <div class="kv-item"><span class="k">Model Forward</span><span class="v">${fmtNumber(search.avg_ms?.inference_forward || 0)} ms</span></div>
             <div class="kv-item"><span class="k">Legal Moves</span><span class="v">${fmtInt(worker.legal_moves)}</span></div>

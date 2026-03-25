@@ -100,9 +100,10 @@ function render(state) {
     const batchesTotal = Number(state.total_batches || 0);
     const filesDone = Number(state.loaded_files || 0);
     const filesTotal = Number(state.total_window_files || 0);
-    const batchSize = Number(profile.train_batch_size || 0);
+    const batchSize = Number(state.train_batch_size || profile.train_batch_size || 0);
     const gradAccum = Math.max(1, Number(profile.train_grad_accum_steps || 1));
     const effectiveBatch = batchSize * gradAccum;
+    const loaderWorkers = Number(state.train_num_workers ?? profile.train_num_workers ?? 0);
     const modelBlocks = Number(profile.model_res_blocks || 0);
     const modelChannels = Number(profile.model_channels || 0);
     const inputHistory = Number(profile.input_history_length || 0);
@@ -262,7 +263,7 @@ function render(state) {
                 ["Compile", profile.train_compile ? "enabled" : "off"],
                 ["Batch / Accum", batchSize ? `${fmtInt(batchSize)} x ${fmtInt(gradAccum)}` : "n/a"],
                 ["Effective Batch", effectiveBatch ? fmtInt(effectiveBatch) : "n/a"],
-                ["Loader Workers", profile.train_num_workers ? fmtInt(profile.train_num_workers) : "0"],
+                ["Loader Workers", fmtInt(loaderWorkers)],
                 ["Model", modelBlocks ? `${fmtInt(modelBlocks)} blocks x ${fmtInt(modelChannels)} channels` : "n/a"],
                 ["Input Stack", inputHistory ? `${fmtInt(inputHistory)} positions / ${fmtInt(inputPlanes)} planes` : "n/a"],
                 ["Self-Play Budget", profile.selfplay_simulations ? `${fmtInt(profile.selfplay_simulations)} sims x ${fmtInt(profile.selfplay_workers || 0)} workers` : "n/a"],

@@ -179,8 +179,8 @@ def run_inprocess_benchmark(device, workers, searches_per_worker, simulations, l
         active = max(1, len(slots))
         totals["count"] += active
         totals["wall_s"] += wall_s
-        totals["simulations"] += int(stats.get("simulations_completed", 0))
-        totals["positions"] += int(evaluator_stats.get("positions_evaluated", 0))
+        totals["simulations"] += int(round(float(stats.get("simulations_completed", 0)) * float(active)))
+        totals["positions"] += int(round(float(evaluator_stats.get("positions_evaluated", 0)) * float(active)))
         for key, target in (
             ("total", "total_ms"),
             ("selection", "selection_ms"),
@@ -189,7 +189,7 @@ def run_inprocess_benchmark(device, workers, searches_per_worker, simulations, l
             ("inference_wait", "wait_ms"),
             ("inference_forward", "forward_ms"),
         ):
-            per_move_value = float(timings.get(key, 0.0)) / float(active)
+            per_move_value = float(timings.get(key, 0.0))
             samples[target].extend([per_move_value] * active)
 
     return totals, samples

@@ -42,6 +42,16 @@ app = Flask(
     static_url_path="/static",
 )
 
+
+def _request_host_with_port(port: int) -> str:
+    host = request.host
+    if host.startswith("["):
+        end = host.find("]")
+        hostname = host[: end + 1] if end != -1 else host
+    else:
+        hostname = host.rsplit(":", 1)[0] if ":" in host else host
+    return f"{request.scheme}://{hostname}:{port}/"
+
 # Fallback engine (will be overwritten if launched via run.py)
 RUNTIME_SELECTION = get_runtime_selection()
 model = build_model()
@@ -468,7 +478,7 @@ def arena():
 @app.route("/monitor")
 def monitor():
     _ensure_actor_cluster_running()
-    return redirect("http://localhost:5002", code=302)
+    return redirect(_request_host_with_port(5002), code=302)
 
 
 @app.route("/api/training_status")

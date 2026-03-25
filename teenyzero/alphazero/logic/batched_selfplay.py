@@ -111,11 +111,15 @@ class BatchedSelfPlayRunner:
 
     def _new_game(self, slot_id):
         random_prob = max(0.0, 1.0 - (self.helper.total_games / self.helper.EXPLORATION_GAMES_THRESHOLD))
+        board = create_board()
+        opening_plies = self.helper._seed_selfplay_opening(board)
         return GameSlot(
             slot_id=slot_id,
+            board=board,
+            move_count=int(opening_plies),
             is_forced_exploration=bool(np.random.random() < random_prob),
             temp_threshold=int(
-                np.random.randint(self.helper.TEMP_PLIES_MIN, self.helper.TEMP_PLIES_MAX + 1)
+                opening_plies + np.random.randint(self.helper.TEMP_PLIES_MIN, self.helper.TEMP_PLIES_MAX + 1)
             ),
         )
 
@@ -191,10 +195,24 @@ class BatchedSelfPlayRunner:
 
         aggregate_profile = {
             "batch_active_games": int(active_count),
+            "slot_ply_interval_ms": float(total_ms),
+            "simulations_requested_total": int(self.simulations * active_count),
+            "simulations_completed_total": int(aggregate["simulations_completed"]),
             "simulations_requested": int(round((self.simulations * active_count) / float(active_count))),
             "simulations_completed": int(round(aggregate["simulations_completed"] / float(active_count))),
             "leaf_batches": int(aggregate["leaf_batches"]),
             "terminal_leaves": int(aggregate["terminal_leaves"]),
+            "batch_timings_ms": {
+                "total": float(total_ms),
+                "root_eval": float(aggregate["root_eval"]),
+                "selection": float(aggregate["selection"]),
+                "leaf_eval": float(aggregate["leaf_eval"]),
+                "backprop": float(aggregate["backprop"]),
+                "encode": float(self.evaluator.profile["encode_ms"]),
+                "policy_mask": float(self.evaluator.profile["mask_ms"]),
+                "inference_wait": float(self.evaluator.profile["inference_wait_ms"]),
+                "inference_forward": float(self.evaluator.profile["inference_forward_ms"]),
+            },
             "timings_ms": {
                 "total": float(total_ms) / float(active_count),
                 "root_eval": float(aggregate["root_eval"]) / float(active_count),

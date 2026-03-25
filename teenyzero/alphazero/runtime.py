@@ -225,6 +225,53 @@ MPS_FAST_PROFILE = RuntimeProfile(
 )
 
 
+CUDA_FAST_PROFILE = RuntimeProfile(
+    name="cuda_fast",
+    input_history_length=4,
+    piece_planes_per_position=12,
+    aux_planes=8,
+    model_version=5,
+    model_res_blocks=8,
+    model_channels=128,
+    policy_head_channels=24,
+    value_head_hidden=128,
+    replay_encoder_version=5,
+    replay_compress=True,
+    min_samples_ready=20_000,
+    train_increment=20_000,
+    replay_window_samples=150_000,
+    train_samples_per_cycle=48_000,
+    bootstrap_window_samples=80_000,
+    max_retained_samples=220_000,
+    train_batch_size=96,
+    train_epochs_per_cycle=1,
+    train_poll_interval_s=5.0,
+    train_optimizer="adamw",
+    train_lr=3e-4,
+    train_weight_decay=1e-4,
+    train_momentum=0.9,
+    train_grad_accum_steps=1,
+    train_num_workers=2,
+    train_pin_memory=True,
+    train_prefetch_factor=2,
+    train_compile=False,
+    train_precision="fp16",
+    max_grad_norm=2.0,
+    selfplay_workers=5,
+    selfplay_simulations=40,
+    selfplay_leaf_batch_size=48,
+    arena_simulations=96,
+    arena_promotion_games=12,
+    arena_baseline_games=4,
+    arena_promotion_threshold=0.55,
+    inference_single_batch=64,
+    inference_merged_batch=128,
+    inference_wait_timeout=0.0002,
+    inference_compile=False,
+    inference_precision="fp16",
+)
+
+
 H100_PROFILE = RuntimeProfile(
     name="h100",
     input_history_length=8,
@@ -323,6 +370,7 @@ PROFILES = {
     LOCAL_PROFILE.name: LOCAL_PROFILE,
     MPS_PROFILE.name: MPS_PROFILE,
     MPS_FAST_PROFILE.name: MPS_FAST_PROFILE,
+    CUDA_FAST_PROFILE.name: CUDA_FAST_PROFILE,
     H100_PROFILE.name: H100_PROFILE,
     H200_PROFILE.name: H200_PROFILE,
 }
@@ -389,7 +437,7 @@ def _device_profile_name(device_name):
         return H200_PROFILE.name
     if "h100" in device_name:
         return H100_PROFILE.name
-    return LOCAL_PROFILE.name
+    return CUDA_FAST_PROFILE.name
 
 
 def active_profile_name():

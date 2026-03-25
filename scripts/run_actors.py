@@ -58,6 +58,15 @@ def _default_worker_count(device: str) -> int:
     return max(2, min(PROFILE.selfplay_workers, target or 1))
 
 
+def _resolve_int_override(cli_value, env_name: str, default_value: int, minimum: int = 1):
+    if cli_value is not None:
+        return max(minimum, int(cli_value))
+    raw_value = os.environ.get(env_name, "").strip()
+    if raw_value.isdigit():
+        return max(minimum, int(raw_value))
+    return int(default_value)
+
+
 def bootstrap_model(path, fallback_path=None):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     model = build_model()
@@ -77,7 +86,7 @@ def bootstrap_model(path, fallback_path=None):
     save_checkpoint(model, path)
 
 
-def worker_task(worker_id, task_queue, response_queue, shared_stats, leaf_batch_size):
+def worker_task(worker_id, task_queue, response_queue, shared_stats, simulations, leaf_batch_size):
     """
     Self-play worker loop.
     """
@@ -90,7 +99,7 @@ def worker_task(worker_id, task_queue, response_queue, shared_stats, leaf_batch_
     )
 
     mcts_params = {
-        "SIMULATIONS": PROFILE.selfplay_simulations,
+        "SIMULATIONS": simulations,
         "C_PUCT": 1.5,
         "ALPHA": 0.3,
         "EPS": 0.30,
@@ -119,7 +128,7 @@ def worker_task(worker_id, task_queue, response_queue, shared_stats, leaf_batch_
         print(f"[Worker {worker_id}] Saved {len(game_data)} positions to {filename}")
 
 
-def run_inprocess_runner(model_path, device, concurrent_games, shared_stats, leaf_batch_size):
+def run_inprocess_runner(model_path, device, concurrent_games, shared_stats, simulations, leaf_batch_size):
     _set_torch_thread_limits()
 
     model = build_model()
@@ -132,7 +141,7 @@ def run_inprocess_runner(model_path, device, concurrent_games, shared_stats, lea
     engine = MCTS(
         evaluator=evaluator,
         params={
-            "SIMULATIONS": PROFILE.selfplay_simulations,
+            "SIMULATIONS": simulations,
             "C_PUCT": 1.5,
             "ALPHA": 0.3,
             "EPS": 0.30,
@@ -169,6 +178,18 @@ if __name__ == "__main__":
         help="Number of self-play processes in mp mode or concurrent games in in-process mode.",
     )
     parser.add_argument(
+        "--simulations",
+        type=int,
+        default=None,
+        help="Override self-play simulations per move.",
+    )
+    parser.add_argument(
+        "--leaf-batch-size",
+        type=int,
+        default=None,
+        help="Override self-play leaf evaluation batch size.",
+    )
+    parser.add_argument(
         "--no-dashboard",
         action="store_true",
         help="Disable the cluster dashboard and shared live stats for max throughput.",
@@ -183,7 +204,13 @@ if __name__ == "__main__":
     env_workers = os.environ.get("TEENYZERO_SELFPLAY_WORKERS", "").strip()
     env_workers = int(env_workers) if env_workers.isdigit() else None
     default_workers = _default_worker_count(DEVICE)
-    leaf_batch_size = PROFILE.selfplay_leaf_batch_size if DEVICE in {"cuda", "mps"} else 8
+    simulations = _resolve_int_override(args.simulations, "TEENYZERO_SELFPLAY_SIMULATIONS", PROFILE.selfplay_simulations)
+    leaf_batch_default = PROFILE.selfplay_leaf_batch_size if DEVICE in {"cuda", "mps"} else 8
+    leaf_batch_size = _resolve_int_override(
+        args.leaf_batch_size,
+        "TEENYZERO_SELFPLAY_LEAF_BATCH_SIZE",
+        leaf_batch_default,
+    )
     worker_count = args.workers if args.workers is not None else (env_workers if env_workers is not None else default_workers)
     dashboard_enabled = not args.no_dashboard
     actor_mode = args.actor_mode
@@ -207,7 +234,7 @@ if __name__ == "__main__":
                     "workers": worker_count,
                     "actor_mode": actor_mode,
                     "model_path": MODEL_PATH,
-                    "simulations": PROFILE.selfplay_simulations,
+                    "simulations": simulations,
                     "leaf_batch_size": leaf_batch_size,
                 }
             }
@@ -235,7 +262,7 @@ if __name__ == "__main__":
             for i in range(worker_count):
                 p = mp.Process(
                     target=worker_task,
-                    args=(i, task_queue, response_queues[i], shared_stats, leaf_batch_size),
+                    args=(i, task_queue, response_queues[i], shared_stats, simulations, leaf_batch_size),
                 )
                 p.daemon = True
                 p.start()
@@ -260,7 +287,7 @@ if __name__ == "__main__":
 
         try:
             if actor_mode == "inprocess":
-                run_inprocess_runner(MODEL_PATH, DEVICE, worker_count, shared_stats, leaf_batch_size)
+                run_inprocess_runner(MODEL_PATH, DEVICE, worker_count, shared_stats, simulations, leaf_batch_size)
             else:
                 for p in processes:
                     p.join()

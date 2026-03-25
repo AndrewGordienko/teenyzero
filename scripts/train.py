@@ -50,13 +50,21 @@ RUNTIME = get_runtime_selection()
 PROFILE = RUNTIME.profile
 PROFILE_SETTINGS = runtime_profile_payload(PROFILE)
 
+def _env_int(name, default, minimum=1):
+    raw_value = os.environ.get(name, "").strip()
+    if raw_value.isdigit():
+        return max(minimum, int(raw_value))
+    return int(default)
+
+
 MIN_SAMPLES_READY = PROFILE.min_samples_ready
 TRAIN_INCREMENT = PROFILE.train_increment
 REPLAY_WINDOW_SAMPLES = PROFILE.replay_window_samples
 TRAIN_SAMPLES_PER_CYCLE = PROFILE.train_samples_per_cycle
 BOOTSTRAP_WINDOW_SAMPLES = PROFILE.bootstrap_window_samples
 MAX_RETAINED_SAMPLES = PROFILE.max_retained_samples
-BATCH_SIZE = PROFILE.train_batch_size
+BATCH_SIZE = _env_int("TEENYZERO_TRAIN_BATCH_SIZE", PROFILE.train_batch_size)
+TRAIN_NUM_WORKERS = _env_int("TEENYZERO_TRAIN_NUM_WORKERS", PROFILE.train_num_workers, minimum=0)
 EPOCHS_PER_CYCLE = PROFILE.train_epochs_per_cycle
 POLL_INTERVAL_S = PROFILE.train_poll_interval_s
 
@@ -117,6 +125,8 @@ def _state_defaults():
         "device": None,
         "runtime_profile": PROFILE.name,
         "runtime_profile_settings": PROFILE_SETTINGS,
+        "train_batch_size": BATCH_SIZE,
+        "train_num_workers": TRAIN_NUM_WORKERS,
         "runtime_paths": runtime_paths_payload(),
         "training_history_path": TRAINING_HISTORY_PATH,
     }
@@ -321,6 +331,8 @@ def main():
     state["device"] = device
     state["runtime_profile"] = PROFILE.name
     state["runtime_profile_settings"] = PROFILE_SETTINGS
+    state["train_batch_size"] = BATCH_SIZE
+    state["train_num_workers"] = TRAIN_NUM_WORKERS
     state["runtime_paths"] = runtime_paths_payload()
     state["training_history_path"] = TRAINING_HISTORY_PATH
     _write_training_state(state)
@@ -417,7 +429,7 @@ def main():
             shuffle=True,
             progress_callback=on_window_progress,
             rng_seed=int(time.time() * 1000) & 0xFFFFFFFF,
-            num_workers=PROFILE.train_num_workers,
+            num_workers=TRAIN_NUM_WORKERS,
             pin_memory=PROFILE.train_pin_memory,
             prefetch_factor=PROFILE.train_prefetch_factor,
         )

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 
 DASHBOARDS_ROOT = Path(__file__).resolve().parents[1]
 
@@ -13,9 +13,19 @@ app = Flask(
 shared_stats = {}
 
 
+def _hub_url() -> str:
+    host = request.host
+    if host.startswith("["):
+        end = host.find("]")
+        hostname = host[: end + 1] if end != -1 else host
+    else:
+        hostname = host.rsplit(":", 1)[0] if ":" in host else host
+    return f"{request.scheme}://{hostname}:5001/"
+
+
 @app.route("/")
 def index():
-    return render_template("cluster_monitor/dashboard.html")
+    return render_template("cluster_monitor/dashboard.html", hub_url=_hub_url())
 
 
 @app.route("/api/stats")

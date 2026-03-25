@@ -80,11 +80,12 @@ board = Chessboard("board", {
     position: "start",
     onDragStart,
     onDrop,
-    pieceTheme: "/static/assets/pieces/{piece}.png",
+    pieceTheme(piece) {
+        return `/static/assets/pieces/${String(piece).toLowerCase()}.png`;
+    },
 });
 
 document.getElementById("user-side").addEventListener("change", resetGame);
 document.getElementById("reset-button").addEventListener("click", resetGame);
 
 resetGame();
-

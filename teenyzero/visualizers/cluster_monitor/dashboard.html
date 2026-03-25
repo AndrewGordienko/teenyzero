@@ -15,7 +15,7 @@
                 <h1>Cluster Monitor</h1>
                 <p>Live self-play telemetry for MCTS, inference, and worker throughput.</p>
             </div>
-            <a class="home-link" href="http://localhost:5001/">Back to Hub</a>
+            <a class="home-link" href="{{ hub_url }}">Back to Hub</a>
             <div id="hero-results" class="hero-results"></div>
         </header>
 
@@ -26,4 +26,3 @@
     <script src="{{ url_for('static', filename='cluster_monitor/dashboard.js') }}"></script>
 </body>
 </html>
-

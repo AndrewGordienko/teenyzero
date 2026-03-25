@@ -5,7 +5,7 @@ import numpy as np
 import chess
 from collections import Counter, deque
 
-from teenyzero.alphazero.backend import create_board
+from teenyzero.alphazero.backend import create_board, move_from_uci
 from teenyzero.alphazero.config import REPLAY_ENCODER_VERSION
 from teenyzero.alphazero.runtime import get_runtime_profile
 from teenyzero.paths import runtime_free_bytes, runtime_low_disk_watermark_bytes
@@ -30,12 +30,28 @@ class DataCollector:
         self.TEMP_PLIES_MAX = 30
         self.OPENING_TEMPERATURE = 1.45
         self.MIDGAME_TEMPERATURE = 1.18
+        self.OPENING_BOOK_PROB = 0.70
+        self.RANDOM_FIRST_PLY_PROB = 0.20
         self.RESIGN_AFTER_PLIES = 24
         self.RESIGN_VALUE_THRESHOLD = -0.92
         self.RESIGN_STREAK = 3
         self.CAPTURED_GAME_VALUE_THRESHOLD = 0.85
         self.CAPTURED_GAME_MATERIAL_THRESHOLD = 2.5
         self.AVOID_DRAW_REPETITION_PLIES = 120
+        self.SELFPLAY_OPENING_BOOK = (
+            (),
+            ("e2e4",),
+            ("d2d4",),
+            ("c2c4",),
+            ("g1f3",),
+            ("e2e4", "e7e5", "g1f3", "b8c6"),
+            ("d2d4", "d7d5", "c2c4", "e7e6"),
+            ("e2e4", "c7c5", "g1f3", "d7d6"),
+            ("d2d4", "g8f6", "c2c4", "g7g6"),
+            ("c2c4", "e7e5", "b1c3", "g8f6"),
+            ("g1f3", "d7d5", "d2d4", "g8f6"),
+            ("e2e4", "e7e6", "d2d4", "d7d5"),
+        )
 
         self.total_games = 0
         self.total_samples = 0
@@ -91,7 +107,7 @@ class DataCollector:
         game_start = time.perf_counter()
         board = create_board()
         game_history = []
-        move_count = 0
+        move_count = self._seed_selfplay_opening(board)
         root = None
         resign_streak = {
             chess.WHITE: 0,
@@ -105,7 +121,7 @@ class DataCollector:
 
         # Keep temperature active longer so self-play does not collapse into
         # short symmetric lines that repeatedly get labeled as draws.
-        temp_threshold = np.random.randint(self.TEMP_PLIES_MIN, self.TEMP_PLIES_MAX + 1)
+        temp_threshold = move_count + np.random.randint(self.TEMP_PLIES_MIN, self.TEMP_PLIES_MAX + 1)
 
         while not board.is_game_over(claim_draw=True) and move_count < self.MAX_GAME_LENGTH:
             best_move, pi_dist, root = self.engine.search(
@@ -202,6 +218,39 @@ class DataCollector:
             self._publish_game_totals(stats_dict)
 
         return final_data
+
+    def _seed_selfplay_opening(self, board):
+        opening_line = self._sample_selfplay_opening_line()
+        if not opening_line:
+            return 0
+        return self._apply_opening_line(board, opening_line)
+
+    def _sample_selfplay_opening_line(self):
+        draw = np.random.random()
+        if draw < self.RANDOM_FIRST_PLY_PROB:
+            board = create_board()
+            legal_moves = list(board.legal_moves)
+            if legal_moves:
+                selected = np.random.choice(legal_moves)
+                return (selected.uci(),)
+            return ()
+        if draw < (self.RANDOM_FIRST_PLY_PROB + self.OPENING_BOOK_PROB):
+            opening = self.SELFPLAY_OPENING_BOOK[np.random.randint(0, len(self.SELFPLAY_OPENING_BOOK))]
+            return tuple(opening)
+        return ()
+
+    def _apply_opening_line(self, board, opening_line):
+        applied = 0
+        for uci in opening_line:
+            try:
+                move = move_from_uci(uci)
+            except Exception:
+                break
+            if move not in board.legal_moves:
+                break
+            board.push(move)
+            applied += 1
+        return applied
 
     def _sample_from_pi(self, pi_dist, fallback_move, board, temperature=1.0):
         """
@@ -420,9 +469,22 @@ class DataCollector:
             "search": {
                 "simulations_requested": int(search_profile.get("simulations_requested", 0)) if search_profile else 0,
                 "simulations_completed": int(search_profile.get("simulations_completed", 0)) if search_profile else 0,
+                "simulations_requested_total": int(search_profile.get("simulations_requested_total", 0)) if search_profile else 0,
+                "simulations_completed_total": int(search_profile.get("simulations_completed_total", 0)) if search_profile else 0,
                 "batch_active_games": int(search_profile.get("batch_active_games", 1)) if search_profile else 1,
+                "slot_ply_interval_ms": float(search_profile.get("slot_ply_interval_ms", 0.0)) if search_profile else 0.0,
                 "leaf_batches": int(search_profile.get("leaf_batches", 0)) if search_profile else 0,
                 "terminal_leaves": int(search_profile.get("terminal_leaves", 0)) if search_profile else 0,
+                "batch_ms": {
+                    "total": float(search_profile.get("batch_timings_ms", {}).get("total", 0.0)) if search_profile else 0.0,
+                    "selection": float(search_profile.get("batch_timings_ms", {}).get("selection", 0.0)) if search_profile else 0.0,
+                    "leaf_eval": float(search_profile.get("batch_timings_ms", {}).get("leaf_eval", 0.0)) if search_profile else 0.0,
+                    "backprop": float(search_profile.get("batch_timings_ms", {}).get("backprop", 0.0)) if search_profile else 0.0,
+                    "encode": float(search_profile.get("batch_timings_ms", {}).get("encode", 0.0)) if search_profile else 0.0,
+                    "policy_mask": float(search_profile.get("batch_timings_ms", {}).get("policy_mask", 0.0)) if search_profile else 0.0,
+                    "inference_wait": float(search_profile.get("batch_timings_ms", {}).get("inference_wait", 0.0)) if search_profile else 0.0,
+                    "inference_forward": float(search_profile.get("batch_timings_ms", {}).get("inference_forward", 0.0)) if search_profile else 0.0,
+                },
                 "last_ms": {
                     "total": float(last_timings.get("total", 0.0)),
                     "selection": float(last_timings.get("selection", 0.0)),

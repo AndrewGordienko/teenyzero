@@ -30,6 +30,15 @@ if __name__ == "__main__":
     parser.add_argument("--no-trainer", action="store_true", help="Do not start the trainer process.")
     parser.add_argument("--no-arena", action="store_true", help="Do not start the arena process.")
     parser.add_argument("--actor-workers", type=int, default=None, help="Override self-play concurrent games/workers.")
+    parser.add_argument("--selfplay-simulations", type=int, default=None, help="Override self-play simulations per move.")
+    parser.add_argument(
+        "--selfplay-leaf-batch-size",
+        type=int,
+        default=None,
+        help="Override self-play leaf evaluation batch size.",
+    )
+    parser.add_argument("--train-batch-size", type=int, default=None, help="Override trainer batch size.")
+    parser.add_argument("--train-num-workers", type=int, default=None, help="Override trainer DataLoader worker count.")
     parser.add_argument("--stockfish-path", default=None, help="Path to a Stockfish binary for arena anchor matches.")
     parser.add_argument("--promotion-games", type=int, default=None, help="Override arena promotion games.")
     parser.add_argument("--baseline-games", type=int, default=None, help="Override arena baseline games per opponent.")
@@ -47,6 +56,14 @@ if __name__ == "__main__":
         os.environ["TEENYZERO_PLAY_SIMULATIONS"] = str(max(1, int(args.play_simulations)))
     if args.actor_workers is not None:
         os.environ["TEENYZERO_SELFPLAY_WORKERS"] = str(max(1, int(args.actor_workers)))
+    if args.selfplay_simulations is not None:
+        os.environ["TEENYZERO_SELFPLAY_SIMULATIONS"] = str(max(1, int(args.selfplay_simulations)))
+    if args.selfplay_leaf_batch_size is not None:
+        os.environ["TEENYZERO_SELFPLAY_LEAF_BATCH_SIZE"] = str(max(1, int(args.selfplay_leaf_batch_size)))
+    if args.train_batch_size is not None:
+        os.environ["TEENYZERO_TRAIN_BATCH_SIZE"] = str(max(1, int(args.train_batch_size)))
+    if args.train_num_workers is not None:
+        os.environ["TEENYZERO_TRAIN_NUM_WORKERS"] = str(max(0, int(args.train_num_workers)))
     if args.stockfish_path:
         os.environ["TEENYZERO_STOCKFISH_PATH"] = str(args.stockfish_path)
     if args.promotion_games is not None:
