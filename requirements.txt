@@ -1,0 +1,5 @@
+# Mirrors the runtime dependencies declared in setup.py.
+chess
+torch
+numpy
+flask
