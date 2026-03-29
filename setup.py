@@ -3,6 +3,17 @@ from setuptools.command.build_ext import build_ext
 
 
 class OptionalBuildExt(build_ext):
+    def build_extensions(self):
+        standard_flag = "/std:c++17" if self.compiler.compiler_type == "msvc" else "-std=c++17"
+        for ext in self.extensions:
+            if ext.language != "c++":
+                continue
+            extra_compile_args = list(getattr(ext, "extra_compile_args", []) or [])
+            if standard_flag not in extra_compile_args:
+                extra_compile_args.append(standard_flag)
+            ext.extra_compile_args = extra_compile_args
+        super().build_extensions()
+
     def run(self):
         try:
             super().run()
