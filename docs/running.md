@@ -254,6 +254,45 @@ This is the command to use when you are measuring:
 
 It is a profiling tool, not part of the normal training loop.
 
+### I want to autotune this machine
+
+If you just want the full machine-specific search in one command, run:
+
+```bash
+python3 scripts/autotune.py \
+  --device mps \
+  --profile mps \
+  --board-backend native \
+  --trials 10 \
+  --time-budget-minutes 30
+```
+
+This is the automatic pipeline now. It runs:
+
+- phase 1: a broad runtime sweep
+- phase 2: a successive-halving refinement pass
+- phase 3: a short quality-validation pass with real replay-window training and
+  a tiny head-to-head arena check
+
+If you want to run one stage by itself, use `--phase`:
+
+```bash
+python3 scripts/autotune.py --phase phase1 --device mps --profile mps --board-backend native
+python3 scripts/autotune.py --phase phase2 --device mps --profile mps --board-backend native
+python3 scripts/autotune.py --phase phase3 --device mps --profile mps --board-backend native
+```
+
+Use `phase1` when you want a quick coarse search.
+Use `phase2` when you want successive halving around the current best config.
+Use `phase3` when you want short real training validation for the current
+finalists.
+
+When you want to publish the winner into the shared registry, run:
+
+```bash
+python3 scripts/promote_autotune.py
+```
+
 ## Runtime Profiles
 
 Profiles are named operating modes defined in
@@ -397,6 +436,23 @@ python3 scripts/run_actors.py \
 ```
 
 This isolates the self-play side of the system.
+
+### Workflow: hardware tuning
+
+If you are trying to find the best runtime settings for a specific laptop or
+GPU, the easiest path is:
+
+```bash
+python3 scripts/autotune.py --device mps --profile mps --board-backend native
+```
+
+That one command runs the full phase 1 -> phase 2 -> phase 3 pipeline.
+
+If you want to inspect or rerun a single stage, use `--phase phase1`,
+`--phase phase2`, or `--phase phase3`.
+
+The dashboard view for all autotune runs is at `http://localhost:5001/autotune`,
+and the saved runs live under `var/data/autotune/`.
 
 ### Workflow: end-to-end training run
 

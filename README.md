@@ -20,7 +20,7 @@ While traditional MCTS relies on heavy simulation counts to "stumble" upon tacti
 
 - [Running Guide](./docs/running.md): setup, quick starts, and which launcher to use for each workflow
 - [Architecture Guide](./docs/architecture.md): how self-play, training, arena evaluation, runtime profiles, and visualizers fit together
-- [Autotune Results](./docs/autotune_results.md): promoted hardware/runtime recommendations from measured phase 1 sweeps
+- [Autotune Results](./docs/autotune_results.md): promoted hardware/runtime recommendations from measured autotune sweeps and the one-command autotune pipeline
 
 ---
 

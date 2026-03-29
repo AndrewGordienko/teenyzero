@@ -20,6 +20,20 @@ function prettyStatus(value) {
         .join(" ");
 }
 
+function prettyPhase(value) {
+    const phase = String(value || "phase1").toLowerCase();
+    if (phase === "phase3") return "Phase 3";
+    if (phase === "phase2") return "Phase 2";
+    if (phase === "phase1") return "Phase 1";
+    return phase;
+}
+
+function scoreValue(value) {
+    if (value == null) return 0;
+    if (typeof value === "number") return value;
+    return Number(value.score ?? value.phase1_score ?? 0);
+}
+
 function axisMarkup(width, height, padding, minValue, maxValue) {
     const usableHeight = height - padding.top - padding.bottom;
     const ticks = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
@@ -67,10 +81,11 @@ function renderScoreChart(trials) {
         const barHeight = normalized * usableHeight;
         const x = padding.left + index * barWidth + 6;
         const y = height - padding.bottom - barHeight;
-        const fill = trial.is_baseline ? "#1a9b53" : "#2155d6";
+        const fill = trial.is_baseline || trial.is_seed ? "#1a9b53" : "#2155d6";
+        const label = trial.round_label ? `${trial.round_label}-${trial.candidate_id || trial.label}` : trial.label;
         return `
             <rect x="${x}" y="${y}" width="${Math.max(12, barWidth - 12)}" height="${Math.max(2, barHeight)}" rx="10" fill="${fill}" />
-            <text x="${x + Math.max(12, barWidth - 12) / 2}" y="${height - 8}" text-anchor="middle" font-size="10" fill="#66727f">${trial.label}</text>
+            <text x="${x + Math.max(12, barWidth - 12) / 2}" y="${height - 8}" text-anchor="middle" font-size="10" fill="#66727f">${label}</text>
         `;
     }).join("");
 
@@ -98,10 +113,11 @@ function renderTradeoffChart(trials) {
     const points = successful.map((trial) => {
         const x = padding.left + ((Number(trial.selfplay?.positions_per_s || 0) - minX) / xSpan) * usableWidth;
         const y = padding.top + usableHeight - ((Number(trial.train?.samples_per_s || 0) - minY) / ySpan) * usableHeight;
-        const fill = trial.is_baseline ? "#1a9b53" : "#111111";
+        const fill = trial.is_baseline || trial.is_seed ? "#1a9b53" : "#111111";
+        const label = trial.candidate_id || trial.label;
         return `
             <circle cx="${x}" cy="${y}" r="6" fill="${fill}" />
-            <text x="${x + 8}" y="${y - 8}" font-size="10" fill="#66727f">${trial.label}</text>
+            <text x="${x + 8}" y="${y - 8}" font-size="10" fill="#66727f">${label}</text>
         `;
     }).join("");
 
@@ -117,12 +133,13 @@ function renderSummary(latest) {
     const summary = document.getElementById("summary");
     const best = latest.best_trial || null;
     const cards = [
-        ["Status", prettyStatus(latest.status), "phase 1 runner state"],
+        ["Status", prettyStatus(latest.status), "autotune runner state"],
+        ["Phase", prettyPhase(latest.phase), "current search strategy"],
         ["Objective", latest.objective || "balanced", "how trial scores are ranked"],
         ["Profile", latest.runtime_args?.profile || "n/a", "runtime profile used during the sweep"],
-        ["Trials", fmtInt(latest.trials?.length || 0), "completed phase 1 trial records"],
-        ["Best Trial", best ? best.label : "n/a", "highest score in the latest ranked run"],
-        ["Best Score", best ? fmtNumber(best.score, 3) : "n/a", "phase 1 score for the current best trial"],
+        ["Trials", fmtInt(latest.trials?.length || 0), "ranked trials from the most recent completed round"],
+        ["Best Trial", best ? (best.candidate_id || best.label) : "n/a", "highest score in the current run"],
+        ["Best Score", best ? fmtNumber(best.score, 3) : "n/a", "autotune score for the current best trial"],
         ["Updated", fmtDate(latest.finished_at || latest.started_at), "latest saved autotune state"],
     ];
 
@@ -143,14 +160,15 @@ function renderBest(latest) {
 
     bestBadge.textContent = prettyStatus(latest.status);
     if (!best) {
-        bestTrial.innerHTML = `<div class="detail-row"><div class="detail-key">State</div><div class="detail-value">No phase 1 results yet</div></div>`;
-        applyCommand.textContent = "Run `python3 scripts/autotune.py` to generate a phase 1 sweep.";
+        bestTrial.innerHTML = `<div class="detail-row"><div class="detail-key">State</div><div class="detail-value">No autotune results yet</div></div>`;
+        applyCommand.textContent = "Run `python3 scripts/autotune.py` to generate a sweep.";
         return;
     }
 
     const config = best.config || {};
-    bestTrial.innerHTML = [
-        ["Trial", best.label],
+    const rows = [
+        ["Phase", prettyPhase(latest.phase)],
+        ["Trial", best.round_label ? `${best.round_label}-${best.candidate_id || best.label}` : (best.candidate_id || best.label)],
         ["Score", fmtNumber(best.score, 3)],
         ["Actor Mode", config.actor_mode],
         ["Self-Play Workers", fmtInt(config.selfplay_workers)],
@@ -162,7 +180,14 @@ function renderBest(latest) {
         ["Train Pin Memory", config.train_pin_memory ? "yes" : "no"],
         ["Self-Play Pos/Sec", fmtNumber(best.selfplay?.positions_per_s, 1)],
         ["Train Samples/Sec", fmtNumber(best.train?.samples_per_s, 1)],
-    ].map(([key, value]) => `
+    ];
+    if (latest.phase === "phase3") {
+        rows.push(["Arena Score", fmtNumber(best.arena?.score, 3)]);
+        rows.push(["Arena Record", `${fmtInt(best.arena?.wins || 0)}-${fmtInt(best.arena?.draws || 0)}-${fmtInt(best.arena?.losses || 0)}`]);
+        rows.push(["Loss Delta", fmtNumber(best.quality?.loss_delta, 4)]);
+    }
+
+    bestTrial.innerHTML = rows.map(([key, value]) => `
         <div class="detail-row">
             <div class="detail-key">${key}</div>
             <div class="detail-value">${value}</div>
@@ -183,13 +208,14 @@ function renderRecent(runs) {
 
     recent.innerHTML = runs.map((run) => {
         const best = run.best_trial || {};
+        const phase = prettyPhase(run.phase);
         return `
             <div class="detail-row">
                 <div>
-                    <div>${run.run_id || "phase1"}</div>
-                    <div class="detail-key">${prettyStatus(run.status)} · ${run.objective || "balanced"} · ${fmtInt(run.trials?.length || 0)} trials</div>
+                    <div>${run.run_id || "autotune"}</div>
+                    <div class="detail-key">${phase} · ${prettyStatus(run.status)} · ${run.objective || "balanced"} · ${fmtInt(run.trials?.length || 0)} ranked trials</div>
                 </div>
-                <div class="detail-value">${best.label ? `${best.label} (${fmtNumber(best.score, 3)})` : "n/a"}</div>
+                <div class="detail-value">${best.label ? `${best.candidate_id || best.label} (${fmtNumber(best.score, 3)})` : "n/a"}</div>
             </div>
         `;
     }).join("");
@@ -218,7 +244,8 @@ function renderDetails(latest) {
         </div>
     `).join("");
 
-    searchSettings.innerHTML = [
+    const rows = [
+        ["Phase", prettyPhase(latest.phase)],
         ["Objective", latest.objective || "balanced"],
         ["Requested Trials", fmtInt(settings.trials || 0)],
         ["Searches / Worker", fmtInt(settings.searches_per_worker || 0)],
@@ -227,7 +254,25 @@ function renderDetails(latest) {
         ["Time Budget", `${fmtNumber(settings.time_budget_minutes || 0, 1)} min`],
         ["Trial Timeout", `${fmtNumber(settings.trial_timeout_s || 0, 0)} s`],
         ["Board Backend", latest.runtime_args?.board_backend || "auto"],
-    ].map(([key, value]) => `
+    ];
+    if (latest.phase === "phase2") {
+        rows.push(["Rounds", fmtInt(settings.rounds || latest.round_count || 0)]);
+        rows.push(["Halving Ratio", fmtNumber(settings.halving_ratio || 0, 2)]);
+        rows.push(["Seed Run", latest.seed_run?.run_id || "profile baseline"]);
+    }
+    if (latest.phase === "phase3") {
+        rows.push(["Finalists", fmtInt(settings.finalists || 0)]);
+        rows.push(["Train Window", fmtInt(settings.train_window_samples || 0)]);
+        rows.push(["Train Samples", fmtInt(settings.train_samples || 0)]);
+        rows.push(["Eval Samples", fmtInt(settings.eval_samples || 0)]);
+        rows.push(["Train Epochs", fmtInt(settings.train_epochs || 0)]);
+        rows.push(["Arena Games", fmtInt(settings.arena_games || 0)]);
+        rows.push(["Arena Sims", fmtInt(settings.arena_simulations || 0)]);
+        rows.push(["Replay Source", latest.replay_source?.source || settings.replay_source || "auto"]);
+        rows.push(["Seed Run", latest.seed_run?.run_id || "phase2 latest"]);
+    }
+
+    searchSettings.innerHTML = rows.map(([key, value]) => `
         <div class="detail-row">
             <div class="detail-key">${key}</div>
             <div class="detail-value">${value}</div>
@@ -235,27 +280,84 @@ function renderDetails(latest) {
     `).join("");
 }
 
+function renderRounds(latest) {
+    const panel = document.getElementById("rounds-panel");
+    const count = document.getElementById("round-count");
+    const container = document.getElementById("rounds");
+    const rounds = latest.rounds || [];
+    if (!rounds.length || latest.phase !== "phase2") {
+        panel.hidden = true;
+        return;
+    }
+
+    panel.hidden = false;
+    count.textContent = `${rounds.length} rounds`;
+    container.innerHTML = rounds.map((round) => {
+        const best = round.best_trial || {};
+        const survivors = round.survivors || [];
+        return `
+            <div class="trial-row">
+                <div>
+                    <div class="trial-head">
+                        <span class="trial-tag">${round.label || "round"}</span>
+                        <div class="trial-name">${fmtInt(round.candidate_count || round.trials?.length || 0)} candidates</div>
+                    </div>
+                    <div class="trial-submeta">
+                        ${fmtInt(round.searches_per_worker || 0)} searches/worker · ${fmtInt(round.train_batches || 0)} train batches · timeout ${fmtInt(round.trial_timeout_s || 0)}s
+                    </div>
+                    <div class="trial-submeta">
+                        best=${best.candidate_id || best.label || "n/a"} · survivors=${survivors.length}
+                    </div>
+                </div>
+                <div class="trial-cell">
+                    <div class="trial-label">Score</div>
+                    <div class="trial-number">${best.label ? fmtNumber(best.score, 3) : "n/a"}</div>
+                </div>
+                <div class="trial-cell">
+                    <div class="trial-label">Pos/Sec</div>
+                    <div class="trial-number">${best.label ? fmtNumber(best.selfplay?.positions_per_s, 1) : "n/a"}</div>
+                </div>
+                <div class="trial-cell">
+                    <div class="trial-label">Train S/S</div>
+                    <div class="trial-number">${best.label ? fmtNumber(best.train?.samples_per_s, 1) : "n/a"}</div>
+                </div>
+                <div class="trial-cell">
+                    <div class="trial-label">Survivors</div>
+                    <div class="trial-number">${fmtInt(survivors.length)}</div>
+                </div>
+            </div>
+        `;
+    }).join("");
+}
+
 function renderTrials(latest) {
     const container = document.getElementById("trials");
     const trials = latest.trials || [];
     if (!trials.length) {
-        container.innerHTML = `<div class="trial-row"><div><div class="trial-name">No phase 1 trials recorded yet</div><div class="trial-submeta">Run \`python3 scripts/autotune.py\` to populate this page.</div></div></div>`;
+        container.innerHTML = `<div class="trial-row"><div><div class="trial-name">No autotune trials recorded yet</div><div class="trial-submeta">Run \`python3 scripts/autotune.py\` to populate this page.</div></div></div>`;
         return;
     }
 
     container.innerHTML = trials.map((trial) => {
         const config = trial.config || {};
         const bad = trial.status !== "ok";
+        const title = latest.phase === "phase3"
+            ? "Quality Validation Candidate"
+            : (trial.round_label ? `${trial.round_label} candidate` : "Runtime Candidate");
+        const qualityMeta = latest.phase === "phase3" && !bad
+            ? `<div class="trial-submeta">arena=${fmtNumber(trial.arena?.score, 3)} · loss_delta=${fmtNumber(trial.quality?.loss_delta, 4)} · source=${trial.source_trial?.candidate_id || trial.source_trial?.label || "n/a"}</div>`
+            : "";
         return `
             <div class="trial-row">
                 <div>
                     <div class="trial-head">
-                        <span class="trial-tag ${trial.is_baseline ? "trial-tag--baseline" : ""}">${trial.label}</span>
-                        <div class="trial-name">${bad ? "Failed Trial" : "Runtime Candidate"}</div>
+                        <span class="trial-tag ${trial.is_baseline || trial.is_seed ? "trial-tag--baseline" : ""}">${trial.candidate_id || trial.label}</span>
+                        <div class="trial-name">${bad ? "Failed Trial" : title}</div>
                     </div>
                     <div class="trial-submeta">
                         mode=${config.actor_mode} · workers=${fmtInt(config.selfplay_workers)} · leaf=${fmtInt(config.selfplay_leaf_batch_size)} · train_batch=${fmtInt(config.train_batch_size)} · train_workers=${fmtInt(config.train_num_workers)} · ${String(config.train_precision || "fp32").toUpperCase()} ${config.train_compile ? "compile" : "eager"}
                     </div>
+                    ${qualityMeta}
                     ${bad && trial.errors?.length ? `<div class="trial-submeta">error: ${trial.errors.join(" | ")}</div>` : ""}
                 </div>
                 <div class="trial-cell">
@@ -271,8 +373,8 @@ function renderTrials(latest) {
                     <div class="trial-number">${bad ? "n/a" : fmtNumber(trial.train?.samples_per_s, 1)}</div>
                 </div>
                 <div class="trial-cell">
-                    <div class="trial-label">Move ms</div>
-                    <div class="trial-number">${bad ? "n/a" : fmtNumber(trial.selfplay?.move_total_mean_ms, 1)}</div>
+                    <div class="trial-label">${latest.phase === "phase3" ? "Arena" : "Move ms"}</div>
+                    <div class="trial-number">${bad ? "n/a" : (latest.phase === "phase3" ? fmtNumber(trial.arena?.score, 3) : fmtNumber(trial.selfplay?.move_total_mean_ms, 1))}</div>
                 </div>
             </div>
         `;
@@ -300,14 +402,14 @@ function renderRecommendations(payload) {
                     <div class="trial-name">${entry.title || entry.id}</div>
                 </div>
                 <div class="trial-submeta">
-                    ${entry.device_family || "unknown"} · seed=${entry.runtime_seed?.device || "n/a"}/${entry.runtime_seed?.profile || "n/a"}/${entry.runtime_seed?.board_backend || "n/a"} · trial=${entry.source?.best_trial_label || "n/a"}
+                    ${entry.device_family || "unknown"} · ${entry.source?.phase || "autotune"} · seed=${entry.runtime_seed?.device || "n/a"}/${entry.runtime_seed?.profile || "n/a"}/${entry.runtime_seed?.board_backend || "n/a"} · trial=${entry.source?.best_trial_label || "n/a"}
                 </div>
                 <div class="trial-submeta">${entry.summary || ""}</div>
                 <div class="trial-submeta mono">${entry.apply_command || ""}</div>
             </div>
             <div class="trial-cell">
-                <div class="trial-label">Phase 1</div>
-                <div class="trial-number">${fmtNumber(entry.metrics?.phase1_score, 3)}</div>
+                <div class="trial-label">Score</div>
+                <div class="trial-number">${fmtNumber(scoreValue(entry.metrics), 3)}</div>
             </div>
             <div class="trial-cell">
                 <div class="trial-label">Pos/Sec</div>
@@ -338,6 +440,7 @@ async function load() {
     renderBest(latest);
     renderRecent(runs || []);
     renderDetails(latest);
+    renderRounds(latest);
     renderRecommendations(recommendations);
     renderTrials(latest);
 }

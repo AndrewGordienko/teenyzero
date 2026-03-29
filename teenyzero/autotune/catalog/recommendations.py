@@ -5,7 +5,8 @@ import re
 import time
 from pathlib import Path
 
-from teenyzero.autotune.phase1 import build_apply_command, latest_phase1_run
+from teenyzero.autotune.core.common import build_apply_command
+from teenyzero.autotune.core.storage import latest_autotune_run
 from teenyzero.paths import PROJECT_ROOT
 
 
@@ -86,6 +87,15 @@ def recommendation_title(run_payload: dict, workload: str, name: str | None = No
     return f"{family.replace('_', ' ').title()} {workload.title()}"
 
 
+def _phase_summary_label(value: str | None) -> str:
+    phase = str(value or "autotune").strip().lower()
+    if phase == "phase1":
+        return "phase 1"
+    if phase == "phase2":
+        return "phase 2"
+    return phase
+
+
 def build_recommendation_entry(
     run_payload: dict,
     name: str | None = None,
@@ -109,13 +119,14 @@ def build_recommendation_entry(
             apply_command = build_apply_command(runtime_args, best_config)
         except KeyError:
             pass
+    phase_label = _phase_summary_label(run_payload.get("phase"))
 
     return {
         "id": entry_id,
         "title": title,
         "workload": workload_name,
         "device_family": family,
-        "summary": notes or f"Promoted from phase 1 autotune run {run_payload.get('run_id', 'unknown')}.",
+        "summary": notes or f"Promoted from {phase_label} autotune run {run_payload.get('run_id', 'unknown')}.",
         "hardware_match": {
             "device": hardware.get("device"),
             "platform_system": (hardware.get("platform") or {}).get("system"),
@@ -130,7 +141,7 @@ def build_recommendation_entry(
         "config": best_config,
         "apply_command": apply_command,
         "metrics": {
-            "phase1_score": best_trial.get("score"),
+            "score": best_trial.get("score"),
             "selfplay_positions_per_s": (best_trial.get("selfplay") or {}).get("positions_per_s"),
             "selfplay_searches_per_s": (best_trial.get("selfplay") or {}).get("searches_per_s"),
             "selfplay_move_total_mean_ms": (best_trial.get("selfplay") or {}).get("move_total_mean_ms"),
@@ -163,10 +174,10 @@ def recommendations_markdown(payload: dict) -> str:
     lines = [
         "# Autotune Results",
         "",
-        "This file tracks promoted phase 1 runtime recommendations that can be shared in the repo.",
+        "This file tracks promoted autotune runtime recommendations that can be shared in the repo.",
         "Each entry comes from an autotune run and captures a recommended hardware/runtime setup for a workload.",
         "",
-        "The source of truth is the checked-in registry at `teenyzero/autotune/recommendations.json`.",
+        "The source of truth is the checked-in registry at `teenyzero/autotune/catalog/recommendations.json`.",
         "",
     ]
 
@@ -225,7 +236,7 @@ def recommendations_markdown(payload: dict) -> str:
                 f"- `id`: `{entry.get('id', 'n/a')}`",
                 f"- `workload`: `{entry.get('workload', 'n/a')}`",
                 f"- `device family`: `{entry.get('device_family', 'n/a')}`",
-                f"- `phase 1 score`: `{float(metrics.get('phase1_score') or 0.0):.3f}`",
+                f"- `score`: `{float(metrics.get('score', metrics.get('phase1_score')) or 0.0):.3f}`",
                 f"- `self-play positions/sec`: `{float(metrics.get('selfplay_positions_per_s') or 0.0):.1f}`",
                 f"- `train samples/sec`: `{float(metrics.get('train_samples_per_s') or 0.0):.1f}`",
                 f"- `best config`: `mode={config.get('actor_mode')}`, `workers={config.get('selfplay_workers')}`, `leaf={config.get('selfplay_leaf_batch_size')}`, `train_batch={config.get('train_batch_size')}`, `train_workers={config.get('train_num_workers')}`, `precision={config.get('train_precision')}`, `compile={config.get('train_compile')}`",
@@ -245,12 +256,16 @@ def write_recommendations_markdown(payload: dict) -> None:
     AUTOTUNE_RESULTS_DOC_PATH.write_text(recommendations_markdown(payload), encoding="utf-8")
 
 
-def promote_latest_phase1_run(name: str | None = None, workload: str | None = None, notes: str | None = None) -> dict:
-    run_payload = latest_phase1_run()
+def promote_latest_autotune_run(name: str | None = None, workload: str | None = None, notes: str | None = None) -> dict:
+    run_payload = latest_autotune_run()
     if not run_payload:
-        raise ValueError("No phase 1 run is available to promote.")
+        raise ValueError("No autotune run is available to promote.")
     entry = build_recommendation_entry(run_payload, name=name, workload=workload, notes=notes)
     payload = upsert_recommendation(entry)
     save_recommendations(payload)
     write_recommendations_markdown(payload)
     return entry
+
+
+def promote_latest_phase1_run(name: str | None = None, workload: str | None = None, notes: str | None = None) -> dict:
+    return promote_latest_autotune_run(name=name, workload=workload, notes=notes)

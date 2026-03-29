@@ -85,6 +85,30 @@ Each profile bundles the knobs that usually need to move together:
 The important idea is that a profile is not just a model architecture preset.
 It is a whole operating mode for the training loop.
 
+## Autotune
+
+The runtime profiles are still human-authored presets, not permanent truths.
+The autotune system exists to turn those presets into measured machine-local
+recommendations.
+
+[`scripts/autotune.py`](/Users/andrewgordienko/Documents/TeenyZero/scripts/autotune.py)
+now has three stages, and the default `python3 scripts/autotune.py ...`
+command runs all of them in sequence:
+
+- phase 1: a broad runtime sweep across worker counts, batch sizes, actor mode,
+  and related execution settings
+- phase 2: a successive-halving pass that starts from the phase 1 winner,
+  explores a tighter neighborhood, and spends more benchmark time only on the
+  strongest candidates
+- phase 3: a short quality-validation pass that trains the top finalists on a
+  real replay window, measures loss improvement, and runs a small candidate
+  versus base arena match
+
+Autotune state is written under `var/data/autotune/`, the dashboard reads the
+latest saved run from there, phase 3 keeps its isolated work artifacts under
+the autotune work directory, and promoted winners are written into the shared
+recommendation registry.
+
 ### 3. Runtime paths
 
 [`teenyzero/paths.py`](/Users/andrewgordienko/Documents/TeenyZero/teenyzero/paths.py)

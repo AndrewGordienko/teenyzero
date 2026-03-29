@@ -12,8 +12,8 @@
         <header class="page-hero">
             <div class="hero-copy">
                 <div class="eyebrow">TeenyZero</div>
-                <h1>Autotune Phase 1</h1>
-                <p class="subtitle">Hardware/runtime search for self-play and trainer throughput. Run <span class="mono">python3 scripts/autotune.py</span>, then inspect the best config here.</p>
+                <h1>Autotune</h1>
+                <p class="subtitle">Hardware/runtime search for self-play and trainer throughput. Run <span class="mono">python3 scripts/autotune.py</span> for the full automatic pipeline, or use <span class="mono">--phase phase1</span>, <span class="mono">--phase phase2</span>, or <span class="mono">--phase phase3</span> to focus on one stage.</p>
             </div>
             <div class="hero-actions">
                 <a class="home-link" href="/">Back to Hub</a>
@@ -31,7 +31,7 @@
                 <div id="best-trial" class="detail-list detail-list--stacked"></div>
                 <div class="command-block">
                     <div class="command-label">Apply Command</div>
-                    <pre id="apply-command" class="command-value mono">No phase 1 run has been recorded yet.</pre>
+                    <pre id="apply-command" class="command-value mono">No autotune run has been recorded yet.</pre>
                 </div>
             </section>
 
@@ -66,6 +66,14 @@
             </section>
         </section>
 
+        <section id="rounds-panel" class="panel shared-panel" hidden>
+            <div class="panel-header">
+                <h2 class="section-title">Round History</h2>
+                <span id="round-count" class="detail-key">0 rounds</span>
+            </div>
+            <div id="rounds" class="trial-list"></div>
+        </section>
+
         <section class="panel shared-panel">
             <div class="panel-header">
                 <h2 class="section-title">Known Recommendations</h2>
@@ -77,7 +85,7 @@
         <section class="panel trials-panel">
             <div class="panel-header">
                 <h2 class="section-title">Trial Table</h2>
-                <span class="detail-key">Ranked by current phase 1 objective</span>
+                <span class="detail-key">Ranked by the current autotune objective</span>
             </div>
             <div id="trials" class="trial-list"></div>
         </section>

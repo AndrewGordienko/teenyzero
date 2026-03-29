@@ -7,12 +7,19 @@ import platform
 import random
 import time
 from dataclasses import asdict, dataclass
-from pathlib import Path
 
 import torch
 
 from teenyzero.alphazero.runtime import RuntimeProfile, RuntimeSelection
-from teenyzero.paths import AUTOTUNE_LATEST_PATH, AUTOTUNE_RUNS_DIR, ensure_runtime_dirs
+from teenyzero.autotune.core.common import (
+    baseline_actor_mode,
+    build_apply_command,
+    compile_options,
+    pin_memory_options,
+    precision_options,
+    unique_int_candidates,
+)
+from teenyzero.autotune.core.storage import latest_autotune_run, list_autotune_runs, save_autotune_run
 
 
 @dataclass(frozen=True)
@@ -76,51 +83,6 @@ def hardware_fingerprint(selection: RuntimeSelection) -> dict:
     }
 
 
-def _unique_int_candidates(base_value: int, minimum: int, maximum: int) -> list[int]:
-    points = {int(base_value), minimum, maximum}
-    for ratio in (0.5, 0.75, 1.0, 1.25, 1.5, 2.0):
-        points.add(int(round(base_value * ratio)))
-    values = sorted(max(minimum, min(maximum, point)) for point in points)
-    return [value for value in values if value >= minimum]
-
-
-def _baseline_actor_mode(device: str) -> str:
-    return "inprocess" if device in {"mps", "cuda"} else "mp"
-
-
-def _precision_options(profile: RuntimeProfile, device: str) -> list[str]:
-    if device != "cuda":
-        return [profile.train_precision]
-    values = [profile.train_precision, "fp32", "fp16", "bf16"]
-    seen = []
-    for value in values:
-        if value not in seen:
-            seen.append(value)
-    return seen
-
-
-def _compile_options(profile: RuntimeProfile, device: str) -> list[bool]:
-    if device != "cuda" or not hasattr(torch, "compile"):
-        return [False]
-    values = [bool(profile.train_compile), False, True]
-    seen = []
-    for value in values:
-        if value not in seen:
-            seen.append(value)
-    return seen
-
-
-def _pin_memory_options(profile: RuntimeProfile, device: str) -> list[bool]:
-    if device != "cuda":
-        return [False]
-    values = [bool(profile.train_pin_memory), False, True]
-    seen = []
-    for value in values:
-        if value not in seen:
-            seen.append(value)
-    return seen
-
-
 def build_phase1_candidates(
     profile: RuntimeProfile,
     device: str,
@@ -134,7 +96,7 @@ def build_phase1_candidates(
     batch_cap = max(16, min(512, profile.train_batch_size * 2))
 
     baseline = Phase1Config(
-        actor_mode=_baseline_actor_mode(device),
+        actor_mode=baseline_actor_mode(device),
         selfplay_workers=max(1, int(profile.selfplay_workers)),
         selfplay_leaf_batch_size=max(1, int(profile.selfplay_leaf_batch_size)),
         train_batch_size=max(1, int(profile.train_batch_size)),
@@ -147,13 +109,13 @@ def build_phase1_candidates(
     actor_modes = ["inprocess", "mp"] if device in {"mps", "cuda"} else ["mp", "inprocess"]
     combos = itertools.product(
         actor_modes,
-        _unique_int_candidates(baseline.selfplay_workers, minimum=1, maximum=worker_cap),
-        _unique_int_candidates(baseline.selfplay_leaf_batch_size, minimum=4, maximum=leaf_cap),
-        _unique_int_candidates(baseline.train_batch_size, minimum=8, maximum=batch_cap),
-        _unique_int_candidates(baseline.train_num_workers, minimum=0, maximum=train_worker_cap),
-        _pin_memory_options(profile, device),
-        _precision_options(profile, device),
-        _compile_options(profile, device),
+        unique_int_candidates(baseline.selfplay_workers, minimum=1, maximum=worker_cap),
+        unique_int_candidates(baseline.selfplay_leaf_batch_size, minimum=4, maximum=leaf_cap),
+        unique_int_candidates(baseline.train_batch_size, minimum=8, maximum=batch_cap),
+        unique_int_candidates(baseline.train_num_workers, minimum=0, maximum=train_worker_cap),
+        pin_memory_options(profile, device),
+        precision_options(profile, device),
+        compile_options(profile, device),
     )
 
     candidates = []
@@ -224,58 +186,6 @@ def phase1_trial_score(trial: dict, baseline: dict | None, objective: str) -> fl
     return (0.40 * positions_ratio) + (0.15 * searches_ratio) + (0.20 * latency_ratio) + (0.25 * train_ratio)
 
 
-def build_apply_command(runtime_args: dict, config: dict) -> str:
-    args = [
-        "python3",
-        "scripts/run_visualizers.py",
-        f"--device {runtime_args['device']}",
-        f"--profile {runtime_args['profile']}",
-        f"--board-backend {runtime_args['board_backend']}",
-        f"--actor-mode {config['actor_mode']}",
-        f"--actor-workers {config['selfplay_workers']}",
-        f"--selfplay-leaf-batch-size {config['selfplay_leaf_batch_size']}",
-        f"--train-batch-size {config['train_batch_size']}",
-        f"--train-num-workers {config['train_num_workers']}",
-        f"--train-precision {config['train_precision']}",
-    ]
-    args.append("--train-pin-memory" if config["train_pin_memory"] else "--no-train-pin-memory")
-    args.append("--train-compile" if config["train_compile"] else "--no-train-compile")
-    return " ".join(args)
-
-
-def _json_safe(value):
-    if isinstance(value, dict):
-        return {key: _json_safe(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_json_safe(item) for item in value]
-    if isinstance(value, Path):
-        return str(value)
-    return value
-
-
-def _write_json(path: Path, payload: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_suffix(path.suffix + ".tmp")
-    with open(tmp_path, "w", encoding="utf-8") as handle:
-        json.dump(_json_safe(payload), handle, indent=2, sort_keys=True)
-    os.replace(tmp_path, path)
-
-
-def _normalized_phase1_payload(payload: dict) -> dict:
-    if not isinstance(payload, dict):
-        return payload
-    normalized = dict(payload)
-    runtime_args = normalized.get("runtime_args") or {}
-    best = normalized.get("best_trial") or {}
-    config = best.get("config") or {}
-    if runtime_args and config:
-        try:
-            normalized["apply_command"] = build_apply_command(runtime_args, config)
-        except KeyError:
-            pass
-    return normalized
-
-
 def finalize_phase1_run(run_payload: dict) -> dict:
     trials = list(run_payload.get("trials", []))
     baseline = next((item for item in trials if item.get("is_baseline")), None)
@@ -292,37 +202,13 @@ def finalize_phase1_run(run_payload: dict) -> dict:
 
 
 def save_phase1_run(run_payload: dict, archive: bool = False) -> Path:
-    ensure_runtime_dirs()
     finalized = finalize_phase1_run(dict(run_payload))
-    latest_path = AUTOTUNE_LATEST_PATH
-    _write_json(latest_path, finalized)
-    if not archive:
-        return latest_path
-    run_id = finalized.get("run_id") or time.strftime("%Y%m%d_%H%M%S")
-    archive_path = AUTOTUNE_RUNS_DIR / f"phase1_{run_id}.json"
-    _write_json(archive_path, finalized)
-    return archive_path
+    return save_autotune_run(finalized, archive=archive)
 
 
 def latest_phase1_run() -> dict | None:
-    if not AUTOTUNE_LATEST_PATH.exists():
-        return None
-    try:
-        with open(AUTOTUNE_LATEST_PATH, "r", encoding="utf-8") as handle:
-            return _normalized_phase1_payload(json.load(handle))
-    except Exception:
-        return None
+    return latest_autotune_run(phase="phase1")
 
 
 def list_phase1_runs(limit: int = 8) -> list[dict]:
-    ensure_runtime_dirs()
-    payloads = []
-    for path in sorted(AUTOTUNE_RUNS_DIR.glob("phase1_*.json"), reverse=True)[: max(1, int(limit))]:
-        try:
-            with open(path, "r", encoding="utf-8") as handle:
-                payload = _normalized_phase1_payload(json.load(handle))
-        except Exception:
-            continue
-        payload["_path"] = str(path)
-        payloads.append(payload)
-    return payloads
+    return list_autotune_runs(limit=limit, phase="phase1")

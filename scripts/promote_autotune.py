@@ -9,7 +9,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from teenyzero.autotune.recommendations import (
+from teenyzero.autotune.catalog.recommendations import (
     AUTOTUNE_RESULTS_DOC_PATH,
     RECOMMENDATIONS_PATH,
     build_recommendation_entry,
@@ -18,7 +18,7 @@ from teenyzero.autotune.recommendations import (
     upsert_recommendation,
     write_recommendations_markdown,
 )
-from teenyzero.autotune.phase1 import latest_phase1_run
+from teenyzero.autotune.core.storage import latest_autotune_run
 
 
 def _load_run(path: str | None) -> dict:
@@ -26,15 +26,15 @@ def _load_run(path: str | None) -> dict:
         run_path = Path(path).expanduser()
         with open(run_path, "r", encoding="utf-8") as handle:
             return json.load(handle)
-    payload = latest_phase1_run()
+    payload = latest_autotune_run()
     if not payload:
-        raise ValueError("No latest phase 1 run found. Pass --run to select a saved run file.")
+        raise ValueError("No latest autotune run found. Pass --run to select a saved run file.")
     return payload
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Promote a phase 1 autotune run into the shared recommendations registry.")
-    parser.add_argument("--run", default=None, help="Path to a saved phase 1 run JSON. Defaults to the latest local run.")
+    parser = argparse.ArgumentParser(description="Promote an autotune run into the shared recommendations registry.")
+    parser.add_argument("--run", default=None, help="Path to a saved autotune run JSON. Defaults to the latest local run.")
     parser.add_argument("--name", default=None, help="Optional user-facing title for the recommendation.")
     parser.add_argument("--workload", default=None, help="Optional workload label. Defaults to the run objective.")
     parser.add_argument("--notes", default=None, help="Optional summary or notes to include with the recommendation.")

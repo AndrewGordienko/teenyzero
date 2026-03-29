@@ -12,8 +12,8 @@ from pathlib import Path
 import chess
 import torch
 from flask import Flask, request, jsonify, render_template, redirect
-from teenyzero.autotune.phase1 import latest_phase1_run, list_phase1_runs
-from teenyzero.autotune.recommendations import load_recommendations
+from teenyzero.autotune.catalog.recommendations import load_recommendations
+from teenyzero.autotune.core.storage import latest_autotune_run, list_autotune_runs
 from teenyzero.alphazero.backend import create_board, move_from_uci
 from teenyzero.alphazero.checkpoints import build_model, load_checkpoint, save_checkpoint
 from teenyzero.alphazero.runtime import get_runtime_profile, get_runtime_selection, runtime_profile_payload
@@ -512,12 +512,12 @@ def arena_history():
 
 @app.route("/api/autotune_status")
 def autotune_status():
-    return jsonify(latest_phase1_run() or {"status": "idle", "trials": []})
+    return jsonify(latest_autotune_run() or {"status": "idle", "trials": []})
 
 
 @app.route("/api/autotune_runs")
 def autotune_runs():
-    return jsonify(list_phase1_runs())
+    return jsonify(list_autotune_runs())
 
 
 @app.route("/api/autotune_recommendations")
