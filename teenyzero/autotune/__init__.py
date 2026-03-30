@@ -21,7 +21,10 @@ from teenyzero.autotune.catalog.recommendations import (
     AUTOTUNE_RESULTS_DOC_PATH,
     RECOMMENDATIONS_PATH,
     build_recommendation_entry,
+    format_profile_overrides,
+    format_runtime_config,
     load_recommendations,
+    promote_autotune_run,
     promote_latest_autotune_run,
     promote_latest_phase1_run,
     recommendation_device_family,
@@ -49,6 +52,22 @@ try:
 except Exception:
     _HAS_PHASE3 = False
 
+try:
+    from teenyzero.autotune.phases.phase4 import (
+        build_phase4_candidates,
+        finalize_phase4_run,
+        latest_phase4_run,
+        list_phase4_runs,
+        phase4_candidate_signature,
+        phase4_seed_run,
+        phase4_trial_score,
+        run_phase4_trial,
+        save_phase4_run,
+    )
+    _HAS_PHASE4 = True
+except Exception:
+    _HAS_PHASE4 = False
+
 __all__ = [
     "build_apply_command",
     "build_phase1_candidates",
@@ -71,7 +90,10 @@ __all__ = [
     "AUTOTUNE_RESULTS_DOC_PATH",
     "RECOMMENDATIONS_PATH",
     "build_recommendation_entry",
+    "format_profile_overrides",
+    "format_runtime_config",
     "load_recommendations",
+    "promote_autotune_run",
     "promote_latest_autotune_run",
     "promote_latest_phase1_run",
     "recommendation_device_family",
@@ -94,5 +116,20 @@ if _HAS_PHASE3:
             "prepare_phase3_replay_source",
             "run_phase3_trial",
             "save_phase3_run",
+        ]
+    )
+
+if _HAS_PHASE4:
+    __all__.extend(
+        [
+            "build_phase4_candidates",
+            "finalize_phase4_run",
+            "latest_phase4_run",
+            "list_phase4_runs",
+            "phase4_candidate_signature",
+            "phase4_seed_run",
+            "phase4_trial_score",
+            "run_phase4_trial",
+            "save_phase4_run",
         ]
     )

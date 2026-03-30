@@ -22,6 +22,7 @@ function prettyStatus(value) {
 
 function prettyPhase(value) {
     const phase = String(value || "phase1").toLowerCase();
+    if (phase === "phase4") return "Phase 4";
     if (phase === "phase3") return "Phase 3";
     if (phase === "phase2") return "Phase 2";
     if (phase === "phase1") return "Phase 1";
@@ -32,6 +33,19 @@ function scoreValue(value) {
     if (value == null) return 0;
     if (typeof value === "number") return value;
     return Number(value.score ?? value.phase1_score ?? 0);
+}
+
+function formatProfileSummary(overrides) {
+    if (!overrides || !Object.keys(overrides).length) return "profile defaults";
+    const parts = [];
+    if (overrides.selfplay_simulations != null) parts.push(`sims=${fmtInt(overrides.selfplay_simulations)}`);
+    if (overrides.train_optimizer) parts.push(`opt=${String(overrides.train_optimizer).toLowerCase()}`);
+    if (overrides.train_lr != null) parts.push(`lr=${Number(overrides.train_lr).toPrecision(4)}`);
+    if (overrides.train_weight_decay != null) parts.push(`wd=${Number(overrides.train_weight_decay).toPrecision(3)}`);
+    if (overrides.train_grad_accum_steps != null) parts.push(`accum=${fmtInt(overrides.train_grad_accum_steps)}`);
+    if (overrides.replay_window_samples != null) parts.push(`replay=${fmtInt(overrides.replay_window_samples)}`);
+    if (overrides.train_samples_per_cycle != null) parts.push(`train_samples=${fmtInt(overrides.train_samples_per_cycle)}`);
+    return parts.join(" · ");
 }
 
 function axisMarkup(width, height, padding, minValue, maxValue) {
@@ -166,6 +180,7 @@ function renderBest(latest) {
     }
 
     const config = best.config || {};
+    const overrides = best.profile_overrides || {};
     const rows = [
         ["Phase", prettyPhase(latest.phase)],
         ["Trial", best.round_label ? `${best.round_label}-${best.candidate_id || best.label}` : (best.candidate_id || best.label)],
@@ -181,7 +196,16 @@ function renderBest(latest) {
         ["Self-Play Pos/Sec", fmtNumber(best.selfplay?.positions_per_s, 1)],
         ["Train Samples/Sec", fmtNumber(best.train?.samples_per_s, 1)],
     ];
-    if (latest.phase === "phase3") {
+    if (latest.phase === "phase4") {
+        rows.push(["Self-Play Sims", fmtInt(overrides.selfplay_simulations)]);
+        rows.push(["Optimizer", overrides.train_optimizer || "n/a"]);
+        rows.push(["Train LR", overrides.train_lr != null ? Number(overrides.train_lr).toPrecision(4) : "n/a"]);
+        rows.push(["Weight Decay", overrides.train_weight_decay != null ? Number(overrides.train_weight_decay).toPrecision(3) : "n/a"]);
+        rows.push(["Grad Accum", fmtInt(overrides.train_grad_accum_steps)]);
+        rows.push(["Replay Window", fmtInt(overrides.replay_window_samples)]);
+        rows.push(["Train Samples/Cycle", fmtInt(overrides.train_samples_per_cycle)]);
+    }
+    if (latest.phase === "phase3" || latest.phase === "phase4") {
         rows.push(["Arena Score", fmtNumber(best.arena?.score, 3)]);
         rows.push(["Arena Record", `${fmtInt(best.arena?.wins || 0)}-${fmtInt(best.arena?.draws || 0)}-${fmtInt(best.arena?.losses || 0)}`]);
         rows.push(["Loss Delta", fmtNumber(best.quality?.loss_delta, 4)]);
@@ -227,6 +251,7 @@ function renderDetails(latest) {
     const hw = latest.hardware || {};
     const cuda = hw.cuda_device || {};
     const settings = latest.search_settings || {};
+    const progress = latest.search_progress || {};
 
     hardware.innerHTML = [
         ["Device", hw.device || "n/a"],
@@ -248,13 +273,15 @@ function renderDetails(latest) {
         ["Phase", prettyPhase(latest.phase)],
         ["Objective", latest.objective || "balanced"],
         ["Requested Trials", fmtInt(settings.trials || 0)],
-        ["Searches / Worker", fmtInt(settings.searches_per_worker || 0)],
-        ["Self-Play Sims", fmtInt(settings.selfplay_simulations || 0)],
-        ["Train Batches", fmtInt(settings.train_batches || 0)],
         ["Time Budget", `${fmtNumber(settings.time_budget_minutes || 0, 1)} min`],
         ["Trial Timeout", `${fmtNumber(settings.trial_timeout_s || 0, 0)} s`],
         ["Board Backend", latest.runtime_args?.board_backend || "auto"],
     ];
+    if (latest.phase === "phase1" || latest.phase === "phase2") {
+        rows.splice(3, 0, ["Searches / Worker", fmtInt(settings.searches_per_worker || 0)]);
+        rows.splice(4, 0, ["Self-Play Sims", fmtInt(settings.selfplay_simulations || 0)]);
+        rows.splice(5, 0, ["Train Batches", fmtInt(settings.train_batches || 0)]);
+    }
     if (latest.phase === "phase2") {
         rows.push(["Rounds", fmtInt(settings.rounds || latest.round_count || 0)]);
         rows.push(["Halving Ratio", fmtNumber(settings.halving_ratio || 0, 2)]);
@@ -270,6 +297,24 @@ function renderDetails(latest) {
         rows.push(["Arena Sims", fmtInt(settings.arena_simulations || 0)]);
         rows.push(["Replay Source", latest.replay_source?.source || settings.replay_source || "auto"]);
         rows.push(["Seed Run", latest.seed_run?.run_id || "phase2 latest"]);
+    }
+    if (latest.phase === "phase4") {
+        rows.splice(3, 0, ["Searches / Worker", fmtInt(settings.searches_per_worker || 0)]);
+        rows.push(["Trials", fmtInt(settings.trials || 0)]);
+        rows.push(["Runtime Finalists", fmtInt(settings.finalists || 0)]);
+        rows.push(["Pool Size", fmtInt(progress.candidate_pool_size || 0)]);
+        rows.push(["Cached Before Run", fmtInt(progress.cached_candidate_count || 0)]);
+        rows.push(["Remaining After Batch", fmtInt(progress.remaining_candidate_count || 0)]);
+        rows.push(["Window Fraction", fmtNumber(settings.train_window_fraction || 0, 3)]);
+        rows.push(["Train Fraction", fmtNumber(settings.train_samples_fraction || 0, 3)]);
+        rows.push(["Max Window", fmtInt(settings.max_window_samples || 0)]);
+        rows.push(["Max Train Samples", fmtInt(settings.max_train_samples || 0)]);
+        rows.push(["Eval Samples", fmtInt(settings.eval_samples || 0)]);
+        rows.push(["Train Epochs", fmtInt(settings.train_epochs || 0)]);
+        rows.push(["Arena Games", fmtInt(settings.arena_games || 0)]);
+        rows.push(["Arena Sims", fmtInt(settings.arena_simulations || 0)]);
+        rows.push(["Replay Source", latest.replay_source?.source || settings.replay_source || "auto"]);
+        rows.push(["Seed Run", latest.seed_run?.run_id || "phase3 latest"]);
     }
 
     searchSettings.innerHTML = rows.map(([key, value]) => `
@@ -340,12 +385,18 @@ function renderTrials(latest) {
 
     container.innerHTML = trials.map((trial) => {
         const config = trial.config || {};
+        const overrides = trial.profile_overrides || {};
         const bad = trial.status !== "ok";
-        const title = latest.phase === "phase3"
-            ? "Quality Validation Candidate"
-            : (trial.round_label ? `${trial.round_label} candidate` : "Runtime Candidate");
-        const qualityMeta = latest.phase === "phase3" && !bad
+        const title = latest.phase === "phase4"
+            ? "Profile Search Candidate"
+            : (latest.phase === "phase3"
+                ? "Quality Validation Candidate"
+                : (trial.round_label ? `${trial.round_label} candidate` : "Runtime Candidate"));
+        const qualityMeta = (latest.phase === "phase3" || latest.phase === "phase4") && !bad
             ? `<div class="trial-submeta">arena=${fmtNumber(trial.arena?.score, 3)} · loss_delta=${fmtNumber(trial.quality?.loss_delta, 4)} · source=${trial.source_trial?.candidate_id || trial.source_trial?.label || "n/a"}</div>`
+            : "";
+        const profileMeta = latest.phase === "phase4"
+            ? `<div class="trial-submeta">${formatProfileSummary(overrides)}${trial.reused ? " · cached" : ""}</div>`
             : "";
         return `
             <div class="trial-row">
@@ -357,6 +408,7 @@ function renderTrials(latest) {
                     <div class="trial-submeta">
                         mode=${config.actor_mode} · workers=${fmtInt(config.selfplay_workers)} · leaf=${fmtInt(config.selfplay_leaf_batch_size)} · train_batch=${fmtInt(config.train_batch_size)} · train_workers=${fmtInt(config.train_num_workers)} · ${String(config.train_precision || "fp32").toUpperCase()} ${config.train_compile ? "compile" : "eager"}
                     </div>
+                    ${profileMeta}
                     ${qualityMeta}
                     ${bad && trial.errors?.length ? `<div class="trial-submeta">error: ${trial.errors.join(" | ")}</div>` : ""}
                 </div>
@@ -373,8 +425,8 @@ function renderTrials(latest) {
                     <div class="trial-number">${bad ? "n/a" : fmtNumber(trial.train?.samples_per_s, 1)}</div>
                 </div>
                 <div class="trial-cell">
-                    <div class="trial-label">${latest.phase === "phase3" ? "Arena" : "Move ms"}</div>
-                    <div class="trial-number">${bad ? "n/a" : (latest.phase === "phase3" ? fmtNumber(trial.arena?.score, 3) : fmtNumber(trial.selfplay?.move_total_mean_ms, 1))}</div>
+                    <div class="trial-label">${latest.phase === "phase3" || latest.phase === "phase4" ? "Arena" : "Move ms"}</div>
+                    <div class="trial-number">${bad ? "n/a" : (latest.phase === "phase3" || latest.phase === "phase4" ? fmtNumber(trial.arena?.score, 3) : fmtNumber(trial.selfplay?.move_total_mean_ms, 1))}</div>
                 </div>
             </div>
         `;
@@ -404,6 +456,7 @@ function renderRecommendations(payload) {
                 <div class="trial-submeta">
                     ${entry.device_family || "unknown"} · ${entry.source?.phase || "autotune"} · seed=${entry.runtime_seed?.device || "n/a"}/${entry.runtime_seed?.profile || "n/a"}/${entry.runtime_seed?.board_backend || "n/a"} · trial=${entry.source?.best_trial_label || "n/a"}
                 </div>
+                <div class="trial-submeta">${formatProfileSummary(entry.profile_overrides || {})}</div>
                 <div class="trial-submeta">${entry.summary || ""}</div>
                 <div class="trial-submeta mono">${entry.apply_command || ""}</div>
             </div>
@@ -420,8 +473,8 @@ function renderRecommendations(payload) {
                 <div class="trial-number">${fmtNumber(entry.metrics?.train_samples_per_s, 1)}</div>
             </div>
             <div class="trial-cell">
-                <div class="trial-label">Move ms</div>
-                <div class="trial-number">${fmtNumber(entry.metrics?.selfplay_move_total_mean_ms, 1)}</div>
+                <div class="trial-label">${entry.source?.phase === "phase3" || entry.source?.phase === "phase4" ? "Arena" : "Move ms"}</div>
+                <div class="trial-number">${entry.source?.phase === "phase3" || entry.source?.phase === "phase4" ? fmtNumber(entry.metrics?.arena_score, 3) : fmtNumber(entry.metrics?.selfplay_move_total_mean_ms, 1)}</div>
             </div>
         </div>
     `).join("");

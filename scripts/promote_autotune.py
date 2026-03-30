@@ -12,11 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from teenyzero.autotune.catalog.recommendations import (
     AUTOTUNE_RESULTS_DOC_PATH,
     RECOMMENDATIONS_PATH,
-    build_recommendation_entry,
-    load_recommendations,
-    save_recommendations,
-    upsert_recommendation,
-    write_recommendations_markdown,
+    promote_autotune_run,
 )
 from teenyzero.autotune.core.storage import latest_autotune_run
 
@@ -44,15 +40,12 @@ def parse_args():
 def main():
     args = parse_args()
     run_payload = _load_run(args.run)
-    entry = build_recommendation_entry(
+    entry = promote_autotune_run(
         run_payload,
         name=args.name,
         workload=args.workload,
         notes=args.notes,
     )
-    payload = upsert_recommendation(entry, load_recommendations())
-    save_recommendations(payload)
-    write_recommendations_markdown(payload)
 
     print("[*] Promoted autotune recommendation")
     print(f"[*] ID: {entry['id']}")

@@ -11,6 +11,7 @@ from teenyzero.paths import (
     AUTOTUNE_PHASE1_LATEST_PATH,
     AUTOTUNE_PHASE2_LATEST_PATH,
     AUTOTUNE_PHASE3_LATEST_PATH,
+    AUTOTUNE_PHASE4_LATEST_PATH,
     AUTOTUNE_RUNS_DIR,
     ensure_runtime_dirs,
 )
@@ -20,6 +21,7 @@ PHASE_LATEST_PATHS = {
     "phase1": AUTOTUNE_PHASE1_LATEST_PATH,
     "phase2": AUTOTUNE_PHASE2_LATEST_PATH,
     "phase3": AUTOTUNE_PHASE3_LATEST_PATH,
+    "phase4": AUTOTUNE_PHASE4_LATEST_PATH,
 }
 
 
@@ -40,7 +42,7 @@ def normalized_autotune_payload(payload: dict) -> dict:
     config = best.get("config") or {}
     if runtime_args and config:
         try:
-            normalized["apply_command"] = build_apply_command(runtime_args, config)
+            normalized["apply_command"] = build_apply_command(runtime_args, config, best.get("profile_overrides"))
         except KeyError:
             pass
     return normalized
@@ -67,7 +69,7 @@ def latest_autotune_run(phase: str | None = None) -> dict | None:
     else:
         path = AUTOTUNE_LATEST_PATH
         if not path.exists():
-            for fallback in (AUTOTUNE_PHASE3_LATEST_PATH, AUTOTUNE_PHASE2_LATEST_PATH, AUTOTUNE_PHASE1_LATEST_PATH):
+            for fallback in (AUTOTUNE_PHASE4_LATEST_PATH, AUTOTUNE_PHASE3_LATEST_PATH, AUTOTUNE_PHASE2_LATEST_PATH, AUTOTUNE_PHASE1_LATEST_PATH):
                 if fallback.exists():
                     path = fallback
                     break

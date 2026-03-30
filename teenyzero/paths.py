@@ -22,6 +22,7 @@ AUTOTUNE_LATEST_PATH = AUTOTUNE_DIR / "latest.json"
 AUTOTUNE_PHASE1_LATEST_PATH = AUTOTUNE_DIR / "phase1_latest.json"
 AUTOTUNE_PHASE2_LATEST_PATH = AUTOTUNE_DIR / "phase2_latest.json"
 AUTOTUNE_PHASE3_LATEST_PATH = AUTOTUNE_DIR / "phase3_latest.json"
+AUTOTUNE_PHASE4_LATEST_PATH = AUTOTUNE_DIR / "phase4_latest.json"
 TRAINING_STATE_PATH = DATA_DIR / "training_state.json"
 TRAINING_HISTORY_PATH = DATA_DIR / "training_history.json"
 TRAINER_LOCK_PATH = DATA_DIR / "trainer.lock"
@@ -108,6 +109,7 @@ def runtime_paths_payload():
         "autotune_phase1_latest_path": str(AUTOTUNE_PHASE1_LATEST_PATH),
         "autotune_phase2_latest_path": str(AUTOTUNE_PHASE2_LATEST_PATH),
         "autotune_phase3_latest_path": str(AUTOTUNE_PHASE3_LATEST_PATH),
+        "autotune_phase4_latest_path": str(AUTOTUNE_PHASE4_LATEST_PATH),
         "training_state_path": str(TRAINING_STATE_PATH),
         "training_history_path": str(TRAINING_HISTORY_PATH),
         "arena_state_path": str(ARENA_STATE_PATH),

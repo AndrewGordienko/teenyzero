@@ -45,6 +45,12 @@ if __name__ == "__main__":
     )
     parser.add_argument("--train-batch-size", type=int, default=None, help="Override trainer batch size.")
     parser.add_argument("--train-num-workers", type=int, default=None, help="Override trainer DataLoader worker count.")
+    parser.add_argument("--train-optimizer", choices=["sgd", "adam", "adamw"], default=None, help="Override trainer optimizer.")
+    parser.add_argument("--train-lr", type=float, default=None, help="Override trainer learning rate.")
+    parser.add_argument("--train-weight-decay", type=float, default=None, help="Override trainer weight decay.")
+    parser.add_argument("--train-grad-accum-steps", type=int, default=None, help="Override trainer grad accumulation steps.")
+    parser.add_argument("--replay-window-samples", type=int, default=None, help="Override trainer replay window size.")
+    parser.add_argument("--train-samples-per-cycle", type=int, default=None, help="Override trainer sampled positions per cycle.")
     parser.add_argument(
         "--train-precision",
         choices=["fp32", "fp16", "bf16"],
@@ -82,6 +88,18 @@ if __name__ == "__main__":
         os.environ["TEENYZERO_TRAIN_BATCH_SIZE"] = str(max(1, int(args.train_batch_size)))
     if args.train_num_workers is not None:
         os.environ["TEENYZERO_TRAIN_NUM_WORKERS"] = str(max(0, int(args.train_num_workers)))
+    if args.train_optimizer is not None:
+        os.environ["TEENYZERO_TRAIN_OPTIMIZER"] = str(args.train_optimizer)
+    if args.train_lr is not None:
+        os.environ["TEENYZERO_TRAIN_LR"] = str(max(1e-8, float(args.train_lr)))
+    if args.train_weight_decay is not None:
+        os.environ["TEENYZERO_TRAIN_WEIGHT_DECAY"] = str(max(0.0, float(args.train_weight_decay)))
+    if args.train_grad_accum_steps is not None:
+        os.environ["TEENYZERO_TRAIN_GRAD_ACCUM_STEPS"] = str(max(1, int(args.train_grad_accum_steps)))
+    if args.replay_window_samples is not None:
+        os.environ["TEENYZERO_REPLAY_WINDOW_SAMPLES"] = str(max(1, int(args.replay_window_samples)))
+    if args.train_samples_per_cycle is not None:
+        os.environ["TEENYZERO_TRAIN_SAMPLES_PER_CYCLE"] = str(max(1, int(args.train_samples_per_cycle)))
     if args.train_precision is not None:
         os.environ["TEENYZERO_TRAIN_PRECISION"] = str(args.train_precision)
     if args.train_compile:

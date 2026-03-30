@@ -66,6 +66,14 @@ def _env_bool(name, default):
     return bool(default)
 
 
+def _env_float(name, default, minimum=0.0):
+    raw_value = os.environ.get(name, "").strip()
+    try:
+        return max(minimum, float(raw_value))
+    except ValueError:
+        return float(default)
+
+
 def _env_choice(name, default, allowed):
     raw_value = os.environ.get(name, "").strip().lower()
     if raw_value in allowed:
@@ -75,8 +83,8 @@ def _env_choice(name, default, allowed):
 
 MIN_SAMPLES_READY = PROFILE.min_samples_ready
 TRAIN_INCREMENT = PROFILE.train_increment
-REPLAY_WINDOW_SAMPLES = PROFILE.replay_window_samples
-TRAIN_SAMPLES_PER_CYCLE = PROFILE.train_samples_per_cycle
+REPLAY_WINDOW_SAMPLES = _env_int("TEENYZERO_REPLAY_WINDOW_SAMPLES", PROFILE.replay_window_samples)
+TRAIN_SAMPLES_PER_CYCLE = _env_int("TEENYZERO_TRAIN_SAMPLES_PER_CYCLE", PROFILE.train_samples_per_cycle)
 BOOTSTRAP_WINDOW_SAMPLES = PROFILE.bootstrap_window_samples
 MAX_RETAINED_SAMPLES = PROFILE.max_retained_samples
 BATCH_SIZE = _env_int("TEENYZERO_TRAIN_BATCH_SIZE", PROFILE.train_batch_size)
@@ -84,6 +92,10 @@ TRAIN_NUM_WORKERS = _env_int("TEENYZERO_TRAIN_NUM_WORKERS", PROFILE.train_num_wo
 TRAIN_PIN_MEMORY = _env_bool("TEENYZERO_TRAIN_PIN_MEMORY", PROFILE.train_pin_memory)
 TRAIN_PRECISION = _env_choice("TEENYZERO_TRAIN_PRECISION", PROFILE.train_precision, {"fp32", "fp16", "bf16"})
 TRAIN_COMPILE = _env_bool("TEENYZERO_TRAIN_COMPILE", PROFILE.train_compile)
+TRAIN_OPTIMIZER = _env_choice("TEENYZERO_TRAIN_OPTIMIZER", PROFILE.train_optimizer, {"sgd", "adam", "adamw"})
+TRAIN_LR = _env_float("TEENYZERO_TRAIN_LR", PROFILE.train_lr, minimum=1e-8)
+TRAIN_WEIGHT_DECAY = _env_float("TEENYZERO_TRAIN_WEIGHT_DECAY", PROFILE.train_weight_decay, minimum=0.0)
+TRAIN_GRAD_ACCUM_STEPS = _env_int("TEENYZERO_TRAIN_GRAD_ACCUM_STEPS", PROFILE.train_grad_accum_steps, minimum=1)
 EPOCHS_PER_CYCLE = PROFILE.train_epochs_per_cycle
 POLL_INTERVAL_S = PROFILE.train_poll_interval_s
 
@@ -149,6 +161,10 @@ def _state_defaults():
         "train_pin_memory": TRAIN_PIN_MEMORY,
         "train_precision": TRAIN_PRECISION,
         "train_compile": TRAIN_COMPILE,
+        "train_optimizer": TRAIN_OPTIMIZER,
+        "train_lr": TRAIN_LR,
+        "train_weight_decay": TRAIN_WEIGHT_DECAY,
+        "train_grad_accum_steps": TRAIN_GRAD_ACCUM_STEPS,
         "runtime_paths": runtime_paths_payload(),
         "training_history_path": TRAINING_HISTORY_PATH,
     }
@@ -340,11 +356,11 @@ def main():
     trainer = AlphaTrainer(
         model,
         device=device,
-        lr=PROFILE.train_lr,
-        optimizer_name=PROFILE.train_optimizer,
-        weight_decay=PROFILE.train_weight_decay,
+        lr=TRAIN_LR,
+        optimizer_name=TRAIN_OPTIMIZER,
+        weight_decay=TRAIN_WEIGHT_DECAY,
         momentum=PROFILE.train_momentum,
-        grad_accum_steps=PROFILE.train_grad_accum_steps,
+        grad_accum_steps=TRAIN_GRAD_ACCUM_STEPS,
         precision=TRAIN_PRECISION,
         use_compile=TRAIN_COMPILE,
         max_grad_norm=PROFILE.max_grad_norm,
@@ -358,6 +374,10 @@ def main():
     state["train_pin_memory"] = TRAIN_PIN_MEMORY
     state["train_precision"] = TRAIN_PRECISION
     state["train_compile"] = TRAIN_COMPILE
+    state["train_optimizer"] = TRAIN_OPTIMIZER
+    state["train_lr"] = TRAIN_LR
+    state["train_weight_decay"] = TRAIN_WEIGHT_DECAY
+    state["train_grad_accum_steps"] = TRAIN_GRAD_ACCUM_STEPS
     state["runtime_paths"] = runtime_paths_payload()
     state["training_history_path"] = TRAINING_HISTORY_PATH
     _write_training_state(state)
@@ -531,6 +551,10 @@ def main():
                 "window_samples": int(window_samples),
                 "window_files": len(files),
                 "train_samples_per_cycle": int(sample_target),
+                "train_optimizer": TRAIN_OPTIMIZER,
+                "train_lr": float(TRAIN_LR),
+                "train_weight_decay": float(TRAIN_WEIGHT_DECAY),
+                "train_grad_accum_steps": int(TRAIN_GRAD_ACCUM_STEPS),
                 "new_samples": int(new_samples),
                 "buffer_samples": int(state["buffer_sample_count"]),
                 "buffer_files": int(state["buffer_file_count"]),

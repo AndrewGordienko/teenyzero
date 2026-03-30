@@ -53,7 +53,7 @@ def pin_memory_options(profile: RuntimeProfile, device: str) -> list[bool]:
     return seen
 
 
-def build_apply_command(runtime_args: dict, config: dict) -> str:
+def build_apply_command(runtime_args: dict, config: dict, profile_overrides: dict | None = None) -> str:
     args = [
         "python3",
         "scripts/run_visualizers.py",
@@ -69,6 +69,21 @@ def build_apply_command(runtime_args: dict, config: dict) -> str:
     ]
     args.append("--train-pin-memory" if config["train_pin_memory"] else "--no-train-pin-memory")
     args.append("--train-compile" if config["train_compile"] else "--no-train-compile")
+    overrides = dict(profile_overrides or {})
+    if overrides.get("selfplay_simulations") is not None:
+        args.append(f"--selfplay-simulations {int(overrides['selfplay_simulations'])}")
+    if overrides.get("train_optimizer"):
+        args.append(f"--train-optimizer {str(overrides['train_optimizer']).lower()}")
+    if overrides.get("train_lr") is not None:
+        args.append(f"--train-lr {float(overrides['train_lr']):.8g}")
+    if overrides.get("train_weight_decay") is not None:
+        args.append(f"--train-weight-decay {float(overrides['train_weight_decay']):.8g}")
+    if overrides.get("train_grad_accum_steps") is not None:
+        args.append(f"--train-grad-accum-steps {int(overrides['train_grad_accum_steps'])}")
+    if overrides.get("replay_window_samples") is not None:
+        args.append(f"--replay-window-samples {int(overrides['replay_window_samples'])}")
+    if overrides.get("train_samples_per_cycle") is not None:
+        args.append(f"--train-samples-per-cycle {int(overrides['train_samples_per_cycle'])}")
     return " ".join(args)
 
 

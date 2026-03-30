@@ -4,12 +4,12 @@ import argparse
 
 
 def parse_args(profile):
-    parser = argparse.ArgumentParser(description="Run TeenyZero hardware/runtime autotuning.")
+    parser = argparse.ArgumentParser(description="Run TeenyZero autotuning across runtime and profile-level settings.")
     parser.add_argument(
         "--phase",
-        choices=["auto", "phase1", "phase2", "phase3"],
+        choices=["auto", "phase1", "phase2", "phase3", "phase4"],
         default="auto",
-        help="Autotune phase to run. `auto` runs phases 1, 2, and 3 in sequence.",
+        help="Autotune phase to run. `auto` runs phases 1, 2, 3, and 4 in sequence.",
     )
     parser.add_argument("--trials", type=int, default=10, help="Initial candidate count to try.")
     parser.add_argument(
@@ -26,7 +26,7 @@ def parse_args(profile):
     parser.add_argument("--seed", type=int, default=0, help="Deterministic seed for candidate ordering.")
     parser.add_argument("--rounds", type=int, default=3, help="Phase 2 halving rounds.")
     parser.add_argument("--halving-ratio", type=float, default=2.0, help="Phase 2 elimination ratio between rounds.")
-    parser.add_argument("--seed-run", default=None, help="Optional prior autotune run JSON used to seed phase 2 or phase 3.")
+    parser.add_argument("--seed-run", default=None, help="Optional prior autotune run JSON used to seed phase 2, phase 3, or phase 4.")
     parser.add_argument("--phase3-finalists", type=int, default=3, help="Finalists from phase 2 (or phase 1) to validate in phase 3.")
     parser.add_argument("--phase3-train-window-samples", type=int, default=min(4096, profile.replay_window_samples))
     parser.add_argument("--phase3-train-samples", type=int, default=min(2048, profile.train_samples_per_cycle))
@@ -41,13 +41,35 @@ def parse_args(profile):
         default="auto",
         help="Use the live replay buffer if it is large enough, or bootstrap a small isolated one for phase 3.",
     )
+    parser.add_argument("--phase4-trials", type=int, default=10, help="Learning/search candidates to try in phase 4.")
+    parser.add_argument("--phase4-finalists", type=int, default=2, help="Top phase 3 runtime finalists to seed into phase 4.")
+    parser.add_argument("--phase4-train-window-fraction", type=float, default=0.05, help="Fraction of replay window samples to use during phase 4 trials.")
+    parser.add_argument("--phase4-train-samples-fraction", type=float, default=0.05, help="Fraction of train samples per cycle to use during phase 4 trials.")
+    parser.add_argument("--phase4-max-window-samples", type=int, default=min(16384, profile.replay_window_samples))
+    parser.add_argument("--phase4-max-train-samples", type=int, default=min(4096, profile.train_samples_per_cycle))
+    parser.add_argument("--phase4-eval-samples", type=int, default=512)
+    parser.add_argument("--phase4-train-epochs", type=int, default=1)
+    parser.add_argument("--phase4-arena-games", type=int, default=4)
+    parser.add_argument("--phase4-arena-simulations", type=int, default=max(64, profile.arena_simulations // 2))
+    parser.add_argument("--phase4-bootstrap-simulations", type=int, default=max(32, profile.selfplay_simulations // 2))
+    parser.add_argument(
+        "--phase4-replay-source",
+        choices=["auto", "live", "bootstrap"],
+        default="auto",
+        help="Use the live replay buffer if it is large enough, or bootstrap a small isolated one for phase 4.",
+    )
+    parser.add_argument("--no-resume", action="store_true", help="Disable reuse of compatible saved phase runs and phase 4 cached trials.")
+    parser.add_argument("--no-auto-promote", action="store_true", help="Do not update the shared markdown/catalog automatically after `--phase auto`.")
     return parser.parse_args()
 
 
 def print_trial_summary(trial: dict, *, phase: str) -> None:
     config = trial["config"]
     prefix = f"{trial.get('round_label')}-" if trial.get("round_label") else ""
-    print(f"\n[{prefix}{trial['candidate_id'] or trial['label']}] {trial['status'].upper()}")
+    status_label = trial["status"].upper()
+    if trial.get("reused"):
+        status_label += " (cached)"
+    print(f"\n[{prefix}{trial['candidate_id'] or trial['label']}] {status_label}")
     print(
         "  config: "
         f"mode={config['actor_mode']} "
@@ -77,6 +99,31 @@ def print_trial_summary(trial: dict, *, phase: str) -> None:
         )
         return
 
+    if phase == "phase4":
+        profile_overrides = trial.get("profile_overrides") or {}
+        print(
+            "  profile: "
+            f"sims={profile_overrides.get('selfplay_simulations')} "
+            f"opt={profile_overrides.get('train_optimizer')} "
+            f"lr={float(profile_overrides.get('train_lr') or 0.0):.6g} "
+            f"wd={float(profile_overrides.get('train_weight_decay') or 0.0):.6g} "
+            f"accum={profile_overrides.get('train_grad_accum_steps')} "
+            f"replay={profile_overrides.get('replay_window_samples')} "
+            f"train_samples={profile_overrides.get('train_samples_per_cycle')}"
+        )
+        print(
+            "  quality: "
+            f"loss {trial['pretrain_eval']['loss']:.4f} -> {trial['posttrain_eval']['loss']:.4f}, "
+            f"arena {trial['arena']['score']:.3f} "
+            f"({trial['arena']['wins']}-{trial['arena']['draws']}-{trial['arena']['losses']})"
+        )
+        print(
+            "  runtime: "
+            f"{trial['selfplay'].get('positions_per_s', 0.0):.1f} pos/s, "
+            f"{trial['train'].get('samples_per_s', 0.0):.1f} samples/s"
+        )
+        return
+
     print(
         "  self-play: "
         f"{trial['selfplay']['positions_per_s']:.1f} pos/s, "
@@ -96,6 +143,7 @@ def print_phase_header(phase: str, board_backend: str, args, requested_trials: i
         "phase1": "Phase 1",
         "phase2": "Phase 2",
         "phase3": "Phase 3",
+        "phase4": "Phase 4",
     }
     print(f"\nTeenyZero Autotune {labels[phase]}")
     print(f"Device: {device}")
@@ -110,11 +158,16 @@ def print_phase_header(phase: str, board_backend: str, args, requested_trials: i
         print(f"Finalists: {max(1, int(args.phase3_finalists))}")
         print(f"Arena games: {max(1, int(args.phase3_arena_games))}")
         print(f"Replay source: {args.phase3_replay_source}")
+    if phase == "phase4":
+        print(f"Trials: {max(1, int(args.phase4_trials))}")
+        print(f"Runtime finalists: {max(1, int(args.phase4_finalists))}")
+        print(f"Arena games: {max(1, int(args.phase4_arena_games))}")
+        print(f"Replay source: {args.phase4_replay_source}")
 
 
 def print_auto_header(*, device: str, profile_name: str, board_backend: str, objective: str) -> None:
     print("\nTeenyZero Autotune Auto")
-    print("Pipeline: phase 1 -> phase 2 -> phase 3")
+    print("Pipeline: phase 1 -> phase 2 -> phase 3 -> phase 4")
     print(f"Device: {device}")
     print(f"Profile: {profile_name}")
     print(f"Board backend: {board_backend}")
@@ -123,4 +176,5 @@ def print_auto_header(*, device: str, profile_name: str, board_backend: str, obj
 
 def print_autotune_footer() -> None:
     print("[*] Open http://localhost:5001/autotune to inspect the dashboard.")
-    print("[*] Promote the best run into the shared catalog with: python3 scripts/promote_autotune.py")
+    print("[*] Promote a saved run manually with: python3 scripts/promote_autotune.py")
+    print("[*] `--phase auto` updates the shared catalog automatically unless you pass --no-auto-promote.")

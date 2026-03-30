@@ -52,6 +52,26 @@ def phase3_settings(args, work_dir: Path) -> dict:
     }
 
 
+def phase4_settings(args, work_dir: Path) -> dict:
+    return {
+        "trials": int(args.phase4_trials),
+        "finalists": int(args.phase4_finalists),
+        "train_window_fraction": float(args.phase4_train_window_fraction),
+        "train_samples_fraction": float(args.phase4_train_samples_fraction),
+        "max_window_samples": int(args.phase4_max_window_samples),
+        "max_train_samples": int(args.phase4_max_train_samples),
+        "eval_samples": int(args.phase4_eval_samples),
+        "train_epochs": int(args.phase4_train_epochs),
+        "arena_games": int(args.phase4_arena_games),
+        "arena_simulations": int(args.phase4_arena_simulations),
+        "replay_source": str(args.phase4_replay_source),
+        "bootstrap_simulations": int(args.phase4_bootstrap_simulations),
+        "searches_per_worker": int(args.searches_per_worker),
+        "trial_timeout_s": float(args.trial_timeout_s),
+        "work_dir": str(work_dir),
+    }
+
+
 def base_payload(phase: str, board_backend: str, started_at: float, run_id: str, *, runtime) -> dict:
     return {
         "phase": phase,
@@ -148,6 +168,36 @@ def phase3_payload(
     return payload
 
 
+def phase4_payload(
+    args,
+    board_backend: str,
+    started_at: float,
+    run_id: str,
+    seed_run: dict | None,
+    work_dir: Path,
+    *,
+    runtime,
+) -> dict:
+    payload = base_payload("phase4", board_backend, started_at, run_id, runtime=runtime)
+    payload.update(
+        {
+            "objective": args.objective,
+            "search_settings": {
+                "time_budget_minutes": float(args.time_budget_minutes),
+                "seed": int(args.seed),
+                **phase4_settings(args, work_dir),
+            },
+            "seed_run": seed_payload(seed_run),
+            "current_trial": None,
+            "replay_source": None,
+            "replay_summary": None,
+            "work_dir": str(work_dir),
+            "trials": [],
+        }
+    )
+    return payload
+
+
 def failed_trial(candidate: dict, error: str) -> dict:
     now = time.time()
     return {
@@ -157,6 +207,7 @@ def failed_trial(candidate: dict, error: str) -> dict:
         "is_baseline": bool(candidate.get("is_baseline")),
         "is_seed": bool(candidate.get("is_seed")),
         "config": dict(candidate["config"]),
+        "profile_overrides": dict(candidate.get("profile_overrides") or {}),
         "started_at": now,
         "finished_at": now,
         "status": "failed",

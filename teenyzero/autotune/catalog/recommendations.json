@@ -1,11 +1,11 @@
 {
   "recommendations": [
     {
-      "apply_command": "python3 scripts/run_visualizers.py --device mps --profile mps --board-backend native --actor-mode inprocess --actor-workers 8 --selfplay-leaf-batch-size 48 --train-batch-size 144 --train-num-workers 4 --train-precision fp16 --no-train-pin-memory --no-train-compile",
+      "apply_command": "python3 scripts/run_visualizers.py --device mps --profile mps --board-backend native --actor-mode inprocess --actor-workers 6 --selfplay-leaf-batch-size 48 --train-batch-size 144 --train-num-workers 4 --train-precision fp16 --no-train-pin-memory --no-train-compile --selfplay-simulations 128 --train-optimizer adamw --train-lr 0.00015 --train-weight-decay 0.0001 --train-grad-accum-steps 4 --replay-window-samples 250000 --train-samples-per-cycle 80000",
       "config": {
         "actor_mode": "inprocess",
         "selfplay_leaf_batch_size": 48,
-        "selfplay_workers": 8,
+        "selfplay_workers": 6,
         "train_batch_size": 144,
         "train_compile": false,
         "train_num_workers": 4,
@@ -21,12 +21,27 @@
       },
       "id": "apple_silicon_mps_balanced",
       "metrics": {
-        "score": 1.0131822058516753,
-        "selfplay_move_total_mean_ms": 142.0850224687058,
-        "selfplay_positions_per_s": 891.9298047320076,
-        "selfplay_searches_per_s": 6.950384451826189,
-        "train_avg_batch_time_ms": 358.31415553305607,
-        "train_samples_per_s": 381.04364905767034
+        "arena_draws": 4,
+        "arena_losses": 0,
+        "arena_score": 0.5,
+        "arena_wins": 0,
+        "loss_delta": 0.08485478162765503,
+        "loss_improvement": 0.0354757831287592,
+        "score": 1.2202767666315155,
+        "selfplay_move_total_mean_ms": 123.10939410417632,
+        "selfplay_positions_per_s": 990.7419141754548,
+        "selfplay_searches_per_s": 7.750262692376439,
+        "train_avg_batch_time_ms": 215.43258185712537,
+        "train_samples_per_s": 663.1176288454155
+      },
+      "profile_overrides": {
+        "replay_window_samples": 250000,
+        "selfplay_simulations": 128,
+        "train_grad_accum_steps": 4,
+        "train_lr": 0.00015000000000000001,
+        "train_optimizer": "adamw",
+        "train_samples_per_cycle": 80000,
+        "train_weight_decay": 0.0001
       },
       "runtime_seed": {
         "board_backend": "native",
@@ -34,19 +49,19 @@
         "profile": "mps"
       },
       "source": {
-        "best_trial_label": "Q02",
+        "best_trial_label": "H16",
         "objective": "balanced",
-        "phase": "phase3",
-        "run_finished_at": 1774816177.243375,
-        "run_id": "20260329_162359",
-        "run_started_at": 1774815839.253566
+        "phase": "phase4",
+        "run_finished_at": 1774834789.916685,
+        "run_id": "20260329_211802",
+        "run_started_at": 1774833482.006368
       },
-      "summary": "Promoted from phase3 autotune run 20260329_162359.",
+      "summary": "Promoted from phase 4 autotune run 20260329_211802.",
       "title": "Apple Silicon MPS 24GB Balanced",
-      "updated_at": 1774817092.589258,
+      "updated_at": 1774834789.940497,
       "workload": "balanced"
     }
   ],
-  "updated_at": 1774817092.5909472,
+  "updated_at": 1774834789.940566,
   "version": 1
 }

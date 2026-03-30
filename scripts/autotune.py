@@ -15,7 +15,7 @@ bootstrap_runtime_cli()
 
 from teenyzero.alphazero.runtime import get_runtime_selection
 from teenyzero.autotune.core.cli import parse_args, print_autotune_footer
-from teenyzero.autotune.core.pipeline import board_backend_name, run_auto, run_phase1, run_phase2, run_phase3
+from teenyzero.autotune.core.pipeline import board_backend_name, run_auto, run_phase1, run_phase2, run_phase3, run_phase4
 from teenyzero.paths import ensure_runtime_dirs
 
 
@@ -56,6 +56,16 @@ def main() -> None:
             overall_deadline,
             runtime=RUNTIME,
             profile=PROFILE,
+        )
+    elif args.phase == "phase4":
+        run_phase4(
+            args,
+            board_backend,
+            overall_deadline,
+            runtime=RUNTIME,
+            profile=PROFILE,
+            project_root=PROJECT_ROOT,
+            python_executable=sys.executable,
         )
     else:
         run_auto(

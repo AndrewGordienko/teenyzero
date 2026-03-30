@@ -93,7 +93,46 @@ def _phase_summary_label(value: str | None) -> str:
         return "phase 1"
     if phase == "phase2":
         return "phase 2"
+    if phase == "phase3":
+        return "phase 3"
+    if phase == "phase4":
+        return "phase 4"
     return phase
+
+
+def format_runtime_config(config: dict) -> str:
+    if not config:
+        return "n/a"
+    return (
+        f"mode={config.get('actor_mode')} "
+        f"workers={config.get('selfplay_workers')} "
+        f"leaf={config.get('selfplay_leaf_batch_size')} "
+        f"train_batch={config.get('train_batch_size')} "
+        f"train_workers={config.get('train_num_workers')} "
+        f"precision={config.get('train_precision')} "
+        f"compile={config.get('train_compile')}"
+    )
+
+
+def format_profile_overrides(overrides: dict) -> str:
+    if not overrides:
+        return "profile defaults"
+    parts = []
+    if overrides.get("selfplay_simulations") is not None:
+        parts.append(f"sims={int(overrides['selfplay_simulations'])}")
+    if overrides.get("train_optimizer"):
+        parts.append(f"opt={str(overrides['train_optimizer']).lower()}")
+    if overrides.get("train_lr") is not None:
+        parts.append(f"lr={float(overrides['train_lr']):.6g}")
+    if overrides.get("train_weight_decay") is not None:
+        parts.append(f"wd={float(overrides['train_weight_decay']):.6g}")
+    if overrides.get("train_grad_accum_steps") is not None:
+        parts.append(f"accum={int(overrides['train_grad_accum_steps'])}")
+    if overrides.get("replay_window_samples") is not None:
+        parts.append(f"replay={int(overrides['replay_window_samples'])}")
+    if overrides.get("train_samples_per_cycle") is not None:
+        parts.append(f"train_samples={int(overrides['train_samples_per_cycle'])}")
+    return " ".join(parts) or "profile defaults"
 
 
 def build_recommendation_entry(
@@ -113,10 +152,11 @@ def build_recommendation_entry(
     hardware = run_payload.get("hardware", {})
     runtime_args = run_payload.get("runtime_args", {})
     best_config = best_trial.get("config", {})
+    profile_overrides = dict(best_trial.get("profile_overrides") or {})
     apply_command = run_payload.get("apply_command")
     if runtime_args and best_config:
         try:
-            apply_command = build_apply_command(runtime_args, best_config)
+            apply_command = build_apply_command(runtime_args, best_config, profile_overrides)
         except KeyError:
             pass
     phase_label = _phase_summary_label(run_payload.get("phase"))
@@ -139,6 +179,7 @@ def build_recommendation_entry(
             "board_backend": runtime_args.get("board_backend"),
         },
         "config": best_config,
+        "profile_overrides": profile_overrides,
         "apply_command": apply_command,
         "metrics": {
             "score": best_trial.get("score"),
@@ -147,6 +188,12 @@ def build_recommendation_entry(
             "selfplay_move_total_mean_ms": (best_trial.get("selfplay") or {}).get("move_total_mean_ms"),
             "train_samples_per_s": (best_trial.get("train") or {}).get("samples_per_s"),
             "train_avg_batch_time_ms": (best_trial.get("train") or {}).get("avg_batch_time_ms"),
+            "arena_score": (best_trial.get("arena") or {}).get("score"),
+            "arena_wins": (best_trial.get("arena") or {}).get("wins"),
+            "arena_draws": (best_trial.get("arena") or {}).get("draws"),
+            "arena_losses": (best_trial.get("arena") or {}).get("losses"),
+            "loss_delta": (best_trial.get("quality") or {}).get("loss_delta"),
+            "loss_improvement": (best_trial.get("quality") or {}).get("loss_improvement"),
         },
         "source": {
             "phase": run_payload.get("phase"),
@@ -174,8 +221,8 @@ def recommendations_markdown(payload: dict) -> str:
     lines = [
         "# Autotune Results",
         "",
-        "This file tracks promoted autotune runtime recommendations that can be shared in the repo.",
-        "Each entry comes from an autotune run and captures a recommended hardware/runtime setup for a workload.",
+        "This file tracks promoted autotune recommendations that can be shared in the repo.",
+        "Each entry comes from an autotune run and captures a recommended hardware, runtime, and profile-level setup for a workload.",
         "",
         "The source of truth is the checked-in registry at `teenyzero/autotune/catalog/recommendations.json`.",
         "",
@@ -203,8 +250,8 @@ def recommendations_markdown(payload: dict) -> str:
 
     lines.extend(
         [
-            "| ID | Title | Workload | Seed | Best Trial | Self-Play Pos/Sec | Train Samples/Sec |",
-            "| --- | --- | --- | --- | --- | ---: | ---: |",
+            "| ID | Title | Workload | Phase | Seed | Best Trial | Self-Play Pos/Sec | Train Samples/Sec |",
+            "| --- | --- | --- | --- | --- | --- | ---: | ---: |",
         ]
     )
     for entry in recommendations:
@@ -212,10 +259,11 @@ def recommendations_markdown(payload: dict) -> str:
         source = entry.get("source", {})
         metrics = entry.get("metrics", {})
         lines.append(
-            "| {id} | {title} | {workload} | {seed} | {trial} | {pos:.1f} | {train:.1f} |".format(
+            "| {id} | {title} | {workload} | {phase} | {seed} | {trial} | {pos:.1f} | {train:.1f} |".format(
                 id=entry.get("id", "n/a"),
                 title=entry.get("title", "n/a"),
                 workload=entry.get("workload", "n/a"),
+                phase=source.get("phase", "n/a"),
                 seed="/".join(
                     str(seed.get(key, "n/a")) for key in ("device", "profile", "board_backend")
                 ),
@@ -229,6 +277,7 @@ def recommendations_markdown(payload: dict) -> str:
     for entry in recommendations:
         metrics = entry.get("metrics", {})
         config = entry.get("config", {})
+        overrides = entry.get("profile_overrides", {})
         lines.extend(
             [
                 f"## {entry.get('title', entry.get('id', 'Recommendation'))}",
@@ -236,10 +285,14 @@ def recommendations_markdown(payload: dict) -> str:
                 f"- `id`: `{entry.get('id', 'n/a')}`",
                 f"- `workload`: `{entry.get('workload', 'n/a')}`",
                 f"- `device family`: `{entry.get('device_family', 'n/a')}`",
+                f"- `source phase`: `{entry.get('source', {}).get('phase', 'n/a')}`",
                 f"- `score`: `{float(metrics.get('score', metrics.get('phase1_score')) or 0.0):.3f}`",
                 f"- `self-play positions/sec`: `{float(metrics.get('selfplay_positions_per_s') or 0.0):.1f}`",
                 f"- `train samples/sec`: `{float(metrics.get('train_samples_per_s') or 0.0):.1f}`",
-                f"- `best config`: `mode={config.get('actor_mode')}`, `workers={config.get('selfplay_workers')}`, `leaf={config.get('selfplay_leaf_batch_size')}`, `train_batch={config.get('train_batch_size')}`, `train_workers={config.get('train_num_workers')}`, `precision={config.get('train_precision')}`, `compile={config.get('train_compile')}`",
+                f"- `best runtime config`: `{format_runtime_config(config)}`",
+                f"- `best profile overrides`: `{format_profile_overrides(overrides)}`",
+                f"- `arena score`: `{float(metrics.get('arena_score') or 0.0):.3f}`",
+                f"- `loss delta`: `{float(metrics.get('loss_delta') or 0.0):.4f}`",
                 f"- `summary`: {entry.get('summary', 'n/a')}",
                 "",
                 "```bash",
@@ -248,7 +301,7 @@ def recommendations_markdown(payload: dict) -> str:
                 "",
             ]
         )
-    return "\n".join(lines)
+    return "\n".join(lines) + "\n"
 
 
 def write_recommendations_markdown(payload: dict) -> None:
@@ -256,15 +309,19 @@ def write_recommendations_markdown(payload: dict) -> None:
     AUTOTUNE_RESULTS_DOC_PATH.write_text(recommendations_markdown(payload), encoding="utf-8")
 
 
-def promote_latest_autotune_run(name: str | None = None, workload: str | None = None, notes: str | None = None) -> dict:
-    run_payload = latest_autotune_run()
-    if not run_payload:
-        raise ValueError("No autotune run is available to promote.")
+def promote_autotune_run(run_payload: dict, name: str | None = None, workload: str | None = None, notes: str | None = None) -> dict:
     entry = build_recommendation_entry(run_payload, name=name, workload=workload, notes=notes)
     payload = upsert_recommendation(entry)
     save_recommendations(payload)
     write_recommendations_markdown(payload)
     return entry
+
+
+def promote_latest_autotune_run(name: str | None = None, workload: str | None = None, notes: str | None = None) -> dict:
+    run_payload = latest_autotune_run()
+    if not run_payload:
+        raise ValueError("No autotune run is available to promote.")
+    return promote_autotune_run(run_payload, name=name, workload=workload, notes=notes)
 
 
 def promote_latest_phase1_run(name: str | None = None, workload: str | None = None, notes: str | None = None) -> dict:
